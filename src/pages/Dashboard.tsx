@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { stats, recentDevTasks, todayTeaching } from "../data/mock";
+import { useProfile } from "../hooks/useProfile";
 import {
   ArrowUpRight,
   CalendarClock,
@@ -8,6 +9,8 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
+  const { profile } = useProfile();
+
   return (
     <div className="relative space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -15,9 +18,17 @@ export default function Dashboard() {
           <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
             Dashboard
           </p>
-          <h1 className="text-2xl font-semibold tracking-wide text-[color:var(--text)]">
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-wide text-[color:var(--text)]">
+              你好👋，{profile.name}老师
+            </h1>
+            <span className="rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1 text-xs text-[color:var(--muted)]">
+              {profile.title}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">
             交付全局概览
-          </h1>
+          </p>
         </div>
         <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-2 text-sm text-[color:var(--muted)]">
           <Sparkles className="h-4 w-4 text-[color:var(--accent)]" />
@@ -121,7 +132,6 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
-
     </div>
   );
 }

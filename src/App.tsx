@@ -3,6 +3,7 @@ import MainLayout from "./components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import DeliveryManager from "./pages/DeliveryManager";
 import DevTracker from "./pages/DevTracker";
+import Profile from "./pages/Profile";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="delivery" element={<DeliveryManager />} />
         <Route path="dev" element={<DevTracker />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

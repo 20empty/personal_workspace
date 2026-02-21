@@ -48,3 +48,18 @@ export const todayTeaching = [
   { title: "混合云网络设计评审", time: "13:30", location: "深圳" },
   { title: "GPU 集群调优 Workshop", time: "19:00", location: "远程" },
 ];
+
+export type ProfileInfo = {
+  name: string;
+  title: string;
+  avatar: string;
+  bio: string;
+};
+
+export const defaultProfile: ProfileInfo = {
+  name: "Jerry",
+  title: "企业云计算讲师",
+  avatar:
+    "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=300&auto=format&fit=crop",
+  bio: "常驻多地交付 · 专注云原生与混合云培训",
+};

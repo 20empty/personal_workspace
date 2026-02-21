@@ -9,6 +9,7 @@ import {
   Sun,
   Moon,
 } from "lucide-react";
+import { useProfile } from "../../hooks/useProfile";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -22,6 +23,8 @@ type SidebarProps = {
 };
 
 export default function Sidebar({ theme, onToggleTheme }: SidebarProps) {
+  const { profile } = useProfile();
+
   return (
     <motion.aside
       initial={{ x: -20, opacity: 0 }}
@@ -30,16 +33,30 @@ export default function Sidebar({ theme, onToggleTheme }: SidebarProps) {
       className="w-72 shrink-0"
     >
       <div className="flex h-full flex-col gap-6 rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-400/80 via-sky-500/80 to-indigo-500/80 text-slate-950">
-            <Cloud className="h-6 w-6" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-cyan-400/80 via-sky-500/80 to-indigo-500/80 text-slate-950">
+              <Cloud className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs text-[color:var(--muted)]">Classroom</p>
+              <p className="text-base font-semibold tracking-wide text-[color:var(--text)]">
+                交付管理中枢
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm text-[color:var(--muted)]">Classroom</p>
-            <p className="text-lg font-semibold tracking-wide text-[color:var(--text)]">
-              交付管理中枢
-            </p>
-          </div>
+          <NavLink
+            to="/profile"
+            className="relative rounded-full transition hover:scale-105"
+            title="Profile"
+          >
+            <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-cyan-400/40 via-sky-500/30 to-indigo-500/40 blur-lg" />
+            <img
+              src={profile.avatar}
+              alt={profile.name}
+              className="relative h-12 w-12 rounded-full border border-[color:var(--border)] object-cover"
+            />
+          </NavLink>
         </div>
 
         <div className="flex flex-col gap-2">

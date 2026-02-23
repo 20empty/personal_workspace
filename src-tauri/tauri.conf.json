@@ -1,0 +1,26 @@
+{
+  "$schema": "https://tauri.app/schemas/v2.json",
+  "productName": "Classroom",
+  "version": "0.0.1",
+  "identifier": "com.classroom.app",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Classroom",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:classroom.db"]
+    }
+  }
+}

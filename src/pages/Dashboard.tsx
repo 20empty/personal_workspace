@@ -10,6 +10,9 @@ import {
 
 export default function Dashboard() {
   const { profile } = useProfile();
+  const now = new Date();
+  const quarter = `Q${Math.floor(now.getMonth() / 3) + 1}`;
+  const currentYear = now.getFullYear();
 
   return (
     <div className="relative space-y-6">
@@ -48,7 +51,11 @@ export default function Dashboard() {
           >
             <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-[color:var(--chip)] blur-2xl transition group-hover:scale-110" />
             <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-sky-500/10 to-transparent opacity-0 transition group-hover:opacity-100" />
-            <p className="text-sm text-[color:var(--muted)]">{item.title}</p>
+            <p className="text-sm text-[color:var(--muted)]">
+              {item.title
+                .replace("本季度", quarter)
+                .replace("本年度", String(currentYear))}
+            </p>
             <div className="mt-3 flex items-end gap-2">
               <span className="text-3xl font-semibold text-[color:var(--text)]">
                 {item.value}

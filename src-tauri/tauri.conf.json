@@ -20,7 +20,9 @@
   },
   "plugins": {
     "sql": {
-      "preload": ["sqlite:classroom.db"]
+      "preload": [
+        "sqlite:/Users/jerry/codex/personal workspace/src-tauri/classroom.db"
+      ]
     }
   }
 }

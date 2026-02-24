@@ -116,7 +116,8 @@ export default function DeliveryManager() {
         } else if (!cancelled) {
           setClasses(rows.map(toView));
         }
-      } catch {
+      } catch (err) {
+        console.error("Database load error, falling back to mock:", err);
         if (!cancelled) {
           setClasses(seedClasses.map(seedToView));
         }
@@ -169,7 +170,8 @@ export default function DeliveryManager() {
       await createDeliveryClass(payload as any);
       const rows = await listDeliveryClasses();
       setClasses(rows.map(toView));
-    } catch {
+    } catch (err) {
+      console.error("Failed to create class:", err);
       setClasses((prev) => [fallback, ...prev]);
     } finally {
       setIsCreateOpen(false);
@@ -182,7 +184,8 @@ export default function DeliveryManager() {
       await deleteDeliveryClass(deleteId);
       const rows = await listDeliveryClasses();
       setClasses(rows.map(toView));
-    } catch {
+    } catch (err) {
+      console.error("Failed to delete class:", err);
       setClasses((prev) => prev.filter((item) => item.id !== deleteId));
     } finally {
       setDeleteId(null);

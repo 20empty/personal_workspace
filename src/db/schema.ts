@@ -8,6 +8,7 @@ export const deliveryClasses = sqliteTable("delivery_classes", {
   location: text("location").notNull(),
   status: text("status").notNull(),
   stage: text("stage").notNull(),
+  classType: text("class_type").notNull().default("centralized"),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   learners: integer("learners").notNull().default(0),
@@ -16,6 +17,22 @@ export const deliveryClasses = sqliteTable("delivery_classes", {
   focus: text("focus").notNull().default("[]"),
   archiveState: text("archive_state").notNull().default("待归档"),
   notes: text("notes"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+export const deliveryCourses = sqliteTable("delivery_courses", {
+  id: text("id").primaryKey(),
+  classId: text("class_id").notNull(),
+  name: text("name").notNull(),
+  days: text("days").notNull(),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  orderIndex: integer("order_index").notNull().default(0),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

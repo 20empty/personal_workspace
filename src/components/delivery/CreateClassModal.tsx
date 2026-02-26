@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import type { ViewClass } from "../../pages/DeliveryManager";
-import type { DeliveryClassRecord } from "../../db/delivery";
+import { CLASS_TYPE_LABELS, type ClassType, type DeliveryClassRecord } from "../../db/delivery";
 
 export type CreatePayload = Omit<DeliveryClassRecord, "id" | "createdAt" | "updatedAt">;
 
@@ -16,6 +16,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
         title: "",
         code: "",
         location: "",
+        classType: "centralized" as ClassType,
         startDate: "",
         endDate: "",
         learners: "",
@@ -36,6 +37,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             title: "",
             code: "",
             location: "",
+            classType: "centralized" as ClassType,
             startDate: "",
             endDate: "",
             learners: "",
@@ -68,6 +70,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             code: form.code,
             title: form.title,
             location: form.location,
+            classType: form.classType,
             startDate: form.startDate,
             endDate: form.endDate,
             learners: Number.parseInt(form.learners || "0", 10) || 0,
@@ -84,6 +87,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             code: payload.code,
             title: payload.title,
             location: payload.location,
+            classType: payload.classType,
             status: payload.status,
             stage: payload.stage,
             startDate: payload.startDate,
@@ -189,6 +193,23 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                             ) : null}
                         </label>
                     </div>
+
+                    <label className="block text-sm text-[color:var(--muted)]">
+                        班级类型
+                        <select
+                            value={form.classType}
+                            onChange={(event) =>
+                                setForm((prev) => ({ ...prev, classType: event.target.value as ClassType }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+                        >
+                            {Object.entries(CLASS_TYPE_LABELS).map(([value, label]) => (
+                                <option key={value} value={value}>
+                                    {label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
 
                     <label className="block text-sm text-[color:var(--muted)]">
                         交付周期

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Plus,
@@ -19,7 +20,6 @@ import {
   type DeliveryClassRecord,
 } from "../db/delivery";
 
-import ClassDetailSidebar from "../components/delivery/ClassDetailSidebar";
 import DeleteConfirmModal from "../components/delivery/DeleteConfirmModal";
 import CreateClassModal, { type CreatePayload } from "../components/delivery/CreateClassModal";
 
@@ -31,6 +31,7 @@ export type ViewClass = Pick<
   | "location"
   | "status"
   | "stage"
+  | "classType"
   | "startDate"
   | "endDate"
   | "learners"
@@ -41,7 +42,7 @@ export type ViewClass = Pick<
 > & { dateRange: string };
 
 export default function DeliveryManager() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ViewClass[]>([]);
@@ -56,6 +57,7 @@ export default function DeliveryManager() {
     location: item.location,
     status: item.status,
     stage: item.stage,
+    classType: item.classType,
     startDate: item.startDate,
     endDate: item.endDate,
     learners: item.learners,
@@ -73,6 +75,7 @@ export default function DeliveryManager() {
     location: item.location,
     status: item.status,
     stage: item.stage,
+    classType: "centralized",
     startDate: item.startDate,
     endDate: item.endDate,
     learners: item.learners,
@@ -87,6 +90,7 @@ export default function DeliveryManager() {
     title: item.title,
     code: item.code,
     location: item.location,
+    classType: "centralized" as const,
     startDate: item.startDate,
     endDate: item.endDate,
     learners: item.learners,
@@ -153,11 +157,6 @@ export default function DeliveryManager() {
           return a.archiveState === "待归档" ? -1 : 1;
         }),
     [classes]
-  );
-
-  const selected = useMemo(
-    () => classes.find((item) => item.id === selectedId),
-    [classes, selectedId]
   );
 
   const toDelete = useMemo(
@@ -234,13 +233,27 @@ export default function DeliveryManager() {
                   当前正在交付
                 </h2>
               </div>
-              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-400">
-                进行中
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-400">
+                  进行中
+                </span>
+                {activeClass && (
+                  <button
+                    onClick={(event) => { event.stopPropagation(); setDeleteId(activeClass.id); }}
+                    className="grid h-8 w-8 place-items-center rounded-full border border-rose-400/30 text-rose-300 transition hover:border-rose-400/60 hover:bg-rose-500/10"
+                    title="删除"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {activeClass ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+              <div
+                className="mt-6 grid gap-4 md:grid-cols-[1.1fr_0.9fr] cursor-pointer"
+                onClick={() => navigate(`/delivery/${activeClass.id}`)}
+              >
                 <div className="space-y-3">
                   <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
                     {activeClass.code}
@@ -324,7 +337,7 @@ export default function DeliveryManager() {
                     type="button"
                     whileHover={{ y: -2 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    onClick={() => setSelectedId(item.id)}
+                    onClick={() => navigate(`/delivery/${item.id}`)}
                     className="group w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 text-left shadow-lg shadow-black/10 transition"
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -346,15 +359,24 @@ export default function DeliveryManager() {
                           </span>
                         </div>
                       </div>
-                      <span
-                        className={
-                          item.archiveState === "待归档"
-                            ? "rounded-full border border-amber-400/40 bg-amber-500/15 px-3 py-1 text-xs text-amber-300"
-                            : "rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300"
-                        }
-                      >
-                        {item.archiveState}
-                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span
+                          className={
+                            item.archiveState === "待归档"
+                              ? "rounded-full border border-amber-400/40 bg-amber-500/15 px-3 py-1 text-xs text-amber-300"
+                              : "rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300"
+                          }
+                        >
+                          {item.archiveState}
+                        </span>
+                        <button
+                          onClick={(event) => { event.stopPropagation(); setDeleteId(item.id); }}
+                          className="grid h-8 w-8 place-items-center rounded-full border border-rose-400/30 text-rose-300 transition hover:border-rose-400/60 hover:bg-rose-500/10"
+                          title="删除"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </motion.button>
                 )))}
@@ -385,7 +407,8 @@ export default function DeliveryManager() {
               upcomingClasses.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4"
+                  onClick={() => navigate(`/delivery/${item.id}`)}
+                  className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 cursor-pointer transition hover:border-[color:var(--accent)]/40"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -397,7 +420,7 @@ export default function DeliveryManager() {
                       </p>
                     </div>
                     <button
-                      onClick={() => setDeleteId(item.id)}
+                      onClick={(event) => { event.stopPropagation(); setDeleteId(item.id); }}
                       className="grid h-8 w-8 place-items-center rounded-full border border-rose-400/30 text-rose-300 transition hover:border-rose-400/60 hover:bg-rose-500/10"
                       title="删除"
                     >
@@ -423,12 +446,6 @@ export default function DeliveryManager() {
           </div>
         </div>
       </section>
-
-      <AnimatePresence>
-        {selected ? (
-          <ClassDetailSidebar selected={selected} onClose={() => setSelectedId(null)} />
-        ) : null}
-      </AnimatePresence>
 
       <AnimatePresence>
         {toDelete ? (

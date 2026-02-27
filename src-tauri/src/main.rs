@@ -13,7 +13,7 @@ fn main() {
   tauri::Builder::default()
     .plugin(
       tauri_plugin_sql::Builder::default()
-        .add_migrations("sqlite:/Users/jerry/codex/personal workspace/src-tauri/classroom.db", migrations)
+        .add_migrations("sqlite:classroom.db", migrations)
         .build(),
     )
     .run(tauri::generate_context!())

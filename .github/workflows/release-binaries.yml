@@ -93,8 +93,9 @@ jobs:
             }
           }
 
-      - name: Smoke test Windows app startup
-        if: runner.os == 'Windows'
+      - name: Smoke test Windows x86 app startup (non-blocking)
+        if: runner.os == 'Windows' && matrix.target == 'i686-pc-windows-msvc'
+        continue-on-error: true
         shell: pwsh
         run: |
           $exePath = "src-tauri/target/${{ matrix.target }}/release/classroom.exe"

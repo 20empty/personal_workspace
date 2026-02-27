@@ -130,7 +130,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                 exit={{ opacity: 0, scale: 0.98, y: 10 }}
                 transition={{ type: "spring", stiffness: 220, damping: 22 }}
                 onClick={(event) => event.stopPropagation()}
-                className="w-[520px] max-w-[92vw] rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-6 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                className="flex max-h-[90vh] w-[520px] max-w-[92vw] flex-col rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-6 shadow-2xl shadow-black/40 backdrop-blur-xl"
             >
                 <div className="flex items-center justify-between">
                     <div>
@@ -149,7 +149,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                     </button>
                 </div>
 
-                <div className="mt-6 grid gap-4">
+                <div className="mt-6 grid flex-1 gap-4 overflow-y-auto pr-1">
                     <label className="block text-sm text-[color:var(--muted)]">
                         班级名称
                         <input
@@ -308,7 +308,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                     </label>
                 </div>
 
-                <div className="mt-6 flex items-center justify-end gap-3">
+                <div className="mt-6 flex shrink-0 items-center justify-end gap-3">
                     <button
                         onClick={() => {
                             onClose();

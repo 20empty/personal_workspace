@@ -1,6 +1,6 @@
 [package]
 name = "classroom"
-version = "0.0.1"
+version = "0.0.2"
 description = "Classroom desktop app"
 authors = ["Jerry"]
 edition = "2021"

@@ -1,0 +1,67 @@
+# Signed Release Pipeline (macOS + Windows)
+
+This project uses `.github/workflows/release-binaries.yml` for production desktop releases.
+
+## What this workflow guarantees
+- macOS builds are **Developer ID signed + notarized** (when Apple secrets are configured).
+- Windows installers (`.exe`, `.msi`, including x86/x64) are **code signed**.
+- Missing signing secrets will fail the run to prevent unsigned public artifacts.
+
+## Required GitHub Secrets
+
+### Apple (for macOS notarization)
+- `APPLE_CERTIFICATE`
+  - Base64 content of your `Developer ID Application` `.p12` certificate.
+- `APPLE_CERTIFICATE_PASSWORD`
+  - Password for the `.p12` file.
+- `APPLE_SIGNING_IDENTITY`
+  - Example: `Developer ID Application: Your Company (TEAMID)`
+- `APPLE_ID`
+  - Apple ID email used for notarization.
+- `APPLE_PASSWORD`
+  - App-specific password for Apple ID.
+- `APPLE_TEAM_ID`
+  - Apple Developer Team ID.
+
+### Windows (for code signing)
+- `WINDOWS_CERTIFICATE`
+  - Base64 content of your code-signing `.pfx` certificate.
+- `WINDOWS_CERTIFICATE_PASSWORD`
+  - Password for the `.pfx` file.
+
+## Optional GitHub Repository Variable
+- `WINDOWS_TIMESTAMP_URL`
+  - Default used by workflow when not set: `http://timestamp.digicert.com`
+
+## How to prepare secrets
+
+### 1) Export Apple certificate to p12
+```bash
+# in Keychain Access, export "Developer ID Application" cert as .p12
+# then base64 it
+base64 -i developer_id_application.p12 | pbcopy
+```
+Paste clipboard content into GitHub secret `APPLE_CERTIFICATE`.
+
+### 2) Export Windows certificate to pfx
+```powershell
+# Export from certificate manager to .pfx, then encode:
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("codesign.pfx"))
+```
+Paste output into GitHub secret `WINDOWS_CERTIFICATE`.
+
+## Run release
+1. Open GitHub Actions.
+2. Run workflow: `Release Desktop Binaries`.
+3. Input tag (example: `v0.0.2`).
+4. Wait for `publish` job success.
+5. Verify assets under GitHub Release page.
+
+## Verification checklist
+- macOS: DMG opens without "app is damaged" warning on a clean machine.
+- Windows: Installer shows verified publisher identity (no unknown publisher warning).
+- Assets include:
+  - `*_aarch64.dmg`
+  - `*_x64.dmg`
+  - `*_x64-setup.exe` and/or `*_x64_en-US.msi`
+  - `*_x86-setup.exe` and/or `*_x86_en-US.msi`

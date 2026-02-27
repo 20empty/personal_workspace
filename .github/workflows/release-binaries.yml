@@ -31,6 +31,8 @@ jobs:
             artifact: windows-x86
 
     runs-on: ${{ matrix.os }}
+    env:
+      CI: true
 
     steps:
       - name: Checkout
@@ -51,8 +53,92 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
+      - name: Validate macOS signing prerequisites
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          required=(
+            APPLE_CERTIFICATE
+            APPLE_CERTIFICATE_PASSWORD
+            APPLE_SIGNING_IDENTITY
+            APPLE_ID
+            APPLE_PASSWORD
+            APPLE_TEAM_ID
+          )
+
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              echo "Missing required secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Validate Windows signing prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            throw "Missing required secret: WINDOWS_CERTIFICATE"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "Missing required secret: WINDOWS_CERTIFICATE_PASSWORD"
+          }
+
       - name: Build Tauri bundle
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Sign Windows installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $timestampUrl = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) { "http://timestamp.digicert.com" } else { $env:WINDOWS_TIMESTAMP_URL }
+          $bundleDir = "src-tauri/target/${{ matrix.target }}/release/bundle"
+          if (-not (Test-Path $bundleDir)) {
+            $bundleDir = "src-tauri/target/release/bundle"
+          }
+          if (-not (Test-Path $bundleDir)) {
+            throw "Bundle directory not found for target ${{ matrix.target }}"
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+
+          $signtoolPath = "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe"
+          if (-not (Test-Path $signtoolPath)) {
+            throw "signtool.exe not found at expected path: $signtoolPath"
+          }
+
+          $files = Get-ChildItem -Path $bundleDir -Recurse -File -Include *.msi,*.exe
+          if ($files.Count -eq 0) {
+            throw "No Windows installer files found to sign under $bundleDir"
+          }
+
+          foreach ($file in $files) {
+            & "$signtoolPath" sign /fd SHA256 /f "$pfxPath" /p "$env:WINDOWS_CERTIFICATE_PASSWORD" /tr "$timestampUrl" /td SHA256 "$($file.FullName)"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to sign $($file.FullName)"
+            }
+          }
 
       - name: Pack bundle directory
         shell: bash

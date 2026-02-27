@@ -97,5 +97,9 @@ npm run tauri:build
 ## Version
 - Current release: `v0.0.1`
 
+## Production Release
+- Signed release workflow: `.github/workflows/release-binaries.yml`
+- Setup guide (macOS notarization + Windows signing): `docs/release-signing.md`
+
 ## License
 If this project is intended for open-source release, add a `LICENSE` file (MIT/Apache-2.0 recommended).

@@ -52,7 +52,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build Tauri bundle
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles all
 
       - name: Pack bundle directory
         shell: bash

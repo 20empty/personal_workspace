@@ -53,46 +53,6 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Validate macOS signing prerequisites
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          required=(
-            APPLE_CERTIFICATE
-            APPLE_CERTIFICATE_PASSWORD
-            APPLE_SIGNING_IDENTITY
-            APPLE_ID
-            APPLE_PASSWORD
-            APPLE_TEAM_ID
-          )
-
-          for key in "${required[@]}"; do
-            if [ -z "${!key}" ]; then
-              echo "Missing required secret: $key"
-              exit 1
-            fi
-          done
-
-      - name: Validate Windows signing prerequisites
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
-            throw "Missing required secret: WINDOWS_CERTIFICATE"
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Missing required secret: WINDOWS_CERTIFICATE_PASSWORD"
-          }
-
       - name: Build Tauri bundle
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -103,8 +63,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: Sign Windows installers
-        if: runner.os == 'Windows'
+      - name: Sign Windows installers (optional)
+        if: runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -140,6 +100,23 @@ jobs:
             }
           }
 
+      - name: Inject unsigned beta notice
+        shell: bash
+        run: |
+          cat > out-beta-note.txt <<'EOF'
+          [Classroom Beta Build]
+          This release may be unsigned in beta mode.
+
+          macOS:
+          1) Move Classroom.app to /Applications
+          2) Run: xattr -dr com.apple.quarantine /Applications/Classroom.app
+          3) Right click app -> Open
+
+          Windows:
+          1) If SmartScreen warns, click "More info" -> "Run anyway"
+          2) Prefer running installer as administrator for first install
+          EOF
+
       - name: Pack bundle directory
         shell: bash
         run: |
@@ -155,6 +132,7 @@ jobs:
 
           mkdir -p out
           cp -R "$BUNDLE_DIR" "out/bundle"
+          cp out-beta-note.txt "out/bundle/UNSIGNED-BETA-NOTICE.txt"
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
@@ -184,6 +162,31 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --notes "Automated desktop binary release"
           fi
+
+      - name: Update release notes for beta install guidance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Classroom Beta Release
+
+          This release is intended for internal/beta testing. Some installers may be unsigned.
+
+          ### macOS first-run
+          1. Move app to `/Applications`
+          2. Run:
+             `xattr -dr com.apple.quarantine /Applications/Classroom.app`
+          3. Right-click app and choose Open
+
+          ### Windows first-run
+          1. If SmartScreen appears, click **More info** -> **Run anyway**
+          2. Install with administrator permission if prompted
+
+          When signing certificates are configured, this workflow will produce signed installers automatically.
+          EOF
+
+          gh release edit "$TAG" --notes-file release-notes.md
 
       - name: Upload binary assets
         env:

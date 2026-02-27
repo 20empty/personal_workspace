@@ -93,6 +93,22 @@ jobs:
             }
           }
 
+      - name: Smoke test Windows app startup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/${{ matrix.target }}/release/classroom.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "App executable not found at $exePath"
+          }
+
+          $proc = Start-Process -FilePath $exePath -PassThru
+          Start-Sleep -Seconds 10
+          if ($proc.HasExited) {
+            throw "App process exited early with code $($proc.ExitCode)"
+          }
+          Stop-Process -Id $proc.Id -Force
+
       - name: Inject unsigned beta notice
         shell: bash
         run: |

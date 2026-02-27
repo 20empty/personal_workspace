@@ -1,0 +1,106 @@
+name: Release Desktop Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload binaries to
+        required: true
+        default: v0.0.1
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: macos-x64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x64
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            artifact: windows-x86
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build Tauri bundle
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Pack bundle directory
+        shell: bash
+        run: |
+          mkdir -p out
+          cp -R "src-tauri/target/${{ matrix.target }}/release/bundle" "out/bundle"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/bundle
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --notes "Automated desktop binary release"
+          fi
+
+      - name: Upload binary assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mapfile -t files < <(find artifacts -type f \( \
+            -name "*.dmg" -o \
+            -name "*.app.tar.gz" -o \
+            -name "*.msi" -o \
+            -name "*.exe" -o \
+            -name "*.zip" \))
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release files found to upload"
+            exit 1
+          fi
+
+          gh release upload "$TAG" "${files[@]}" --clobber

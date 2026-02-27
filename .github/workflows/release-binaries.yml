@@ -7,12 +7,21 @@ on:
         description: Release tag to upload binaries to
         required: true
         default: v0.0.1
+      target_scope:
+        description: Build scope
+        required: true
+        type: choice
+        default: windows
+        options:
+          - windows
+          - all
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: ${{ inputs.target_scope == 'all' || contains(matrix.target, 'windows') }}
     strategy:
       fail-fast: false
       matrix:

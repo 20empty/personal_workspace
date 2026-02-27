@@ -16,8 +16,8 @@ If SmartScreen warns about unknown publisher:
 1. Click `More info`
 2. Click `Run anyway`
 
-For this project, Windows installer is configured with WebView2 `offlineInstaller` mode, so end users do not need to preinstall WebView2 manually.
-Note: this increases installer size.
+For this project, Windows installer uses WebView2 `downloadBootstrapper` mode by default.
+That keeps installer size smaller and will only download WebView2 when target machine does not already have it.
 
 ## Notes
 - This is expected behavior for unsigned beta packages.

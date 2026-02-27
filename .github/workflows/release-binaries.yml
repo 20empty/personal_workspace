@@ -57,8 +57,18 @@ jobs:
       - name: Pack bundle directory
         shell: bash
         run: |
+          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle" ]; then
+            BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          elif [ -d "src-tauri/target/release/bundle" ]; then
+            BUNDLE_DIR="src-tauri/target/release/bundle"
+          else
+            echo "Bundle directory not found for target ${{ matrix.target }}"
+            find src-tauri/target -maxdepth 4 -type d -name bundle || true
+            exit 1
+          fi
+
           mkdir -p out
-          cp -R "src-tauri/target/${{ matrix.target }}/release/bundle" "out/bundle"
+          cp -R "$BUNDLE_DIR" "out/bundle"
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4

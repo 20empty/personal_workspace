@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
     ArrowLeft,
     MapPin,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
     getDeliveryClass,
+    updateDeliveryClass,
     getSopTasksByClassId,
     seedSopTasksForClass,
     getCoursesByClassId,
@@ -22,92 +23,8 @@ import {
     type CourseRecord,
     type ClassType,
 } from "../db/delivery";
-import { deliveryClasses as mockClasses } from "../data/mock";
 import SopTracker from "../components/delivery/SopTracker";
 import CourseList from "../components/delivery/CourseList";
-
-/* ───────── Mock fallback helpers ───────── */
-
-function mockToRecord(item: (typeof mockClasses)[number]): DeliveryClassRecord {
-    return {
-        id: item.id,
-        code: item.code,
-        title: item.title,
-        location: item.location,
-        status: item.status,
-        stage: item.stage,
-        classType: "centralized",
-        startDate: item.startDate,
-        endDate: item.endDate,
-        learners: item.learners,
-        progress: item.progress,
-        nextSession: item.nextSession,
-        focus: item.focus,
-        archiveState: item.archiveState ?? "待归档",
-        notes: null,
-        createdAt: "",
-        updatedAt: "",
-    };
-}
-
-/**
- * Generate SOP tasks in-memory when the database is unavailable.
- */
-function generateMockSopTasks(classId: string): SopTaskRecord[] {
-    const template = [
-        { stage: "pre", title: "建群及通知" },
-        { stage: "pre", title: "收集学员基础信息" },
-        { stage: "pre", title: "开营仪式准备" },
-        { stage: "pre", title: "确认学员差旅及集中住宿安排" },
-        { stage: "pre", title: "确认主讲教室及分组讨论室预订" },
-        { stage: "during", title: "每日考勤" },
-        { stage: "during", title: "课堂记录/答疑汇总" },
-        { stage: "during", title: "阶段性测验/作业跟进" },
-        { stage: "during", title: "集中性破冰活动组织" },
-        { stage: "post", title: "收集课程反馈" },
-        { stage: "post", title: "发放结业证书" },
-        { stage: "post", title: "讲师课程复盘报告" },
-    ];
-    return template.map((t, i) => ({
-        id: `mock-sop-${classId}-${i}`,
-        classId,
-        stage: t.stage,
-        title: t.title,
-        status: "pending",
-        orderIndex: i,
-        createdAt: "",
-    }));
-}
-
-/**
- * Generate mock courses when database is unavailable.
- */
-function generateMockCourses(classId: string): CourseRecord[] {
-    return [
-        {
-            id: `mock-course-${classId}-1`,
-            classId,
-            name: "前端架构体系与性能优化",
-            days: "2",
-            startDate: "2024-03-01",
-            endDate: "2024-03-02",
-            orderIndex: 0,
-            createdAt: "",
-            updatedAt: "",
-        },
-        {
-            id: `mock-course-${classId}-2`,
-            classId,
-            name: "React 高阶用法与源码解析",
-            days: "1.5",
-            startDate: "2024-03-04",
-            endDate: "2024-03-05",
-            orderIndex: 1,
-            createdAt: "",
-            updatedAt: "",
-        },
-    ];
-}
 
 /* ───────── Status badge helper ───────── */
 
@@ -141,7 +58,58 @@ export default function ClassDetail() {
     const [tasks, setTasks] = useState<SopTaskRecord[]>([]);
     const [courses, setCourses] = useState<CourseRecord[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isMockMode, setIsMockMode] = useState(false);
+    const [noteDraft, setNoteDraft] = useState("");
+    const [isSavingNote, setIsSavingNote] = useState(false);
+    const [showAutoArchiveNotice, setShowAutoArchiveNotice] = useState(false);
+    const hasShownAutoArchiveNoticeRef = useRef(false);
+
+    const syncClassProgressByTasks = useCallback(async (
+        latestTasks: SopTaskRecord[],
+        persist = true
+    ) => {
+        const total = latestTasks.length;
+        const done = latestTasks.filter((task) => task.status === "completed").length;
+        const nextProgress = total === 0 ? 0 : Math.round((done / total) * 100);
+        const nextArchiveState = nextProgress === 100 ? "已归档" : "待归档";
+        if (nextProgress < 100) {
+            hasShownAutoArchiveNoticeRef.current = false;
+        }
+        const shouldNotify =
+            nextProgress === 100 &&
+            cls?.archiveState !== "已归档" &&
+            !hasShownAutoArchiveNoticeRef.current;
+        setCls((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                progress: nextProgress,
+                archiveState: nextArchiveState,
+            };
+        });
+        if (shouldNotify) {
+            setShowAutoArchiveNotice(true);
+            hasShownAutoArchiveNoticeRef.current = true;
+        }
+
+        if (persist && classId) {
+            try {
+                await updateDeliveryClass(classId, {
+                    progress: nextProgress,
+                    archiveState: nextArchiveState,
+                });
+            } catch (err) {
+                console.error("Failed to sync class progress/archive state:", err);
+            }
+        }
+    }, [classId, cls?.archiveState]);
+
+    useEffect(() => {
+        if (!showAutoArchiveNotice) return;
+        const timer = window.setTimeout(() => {
+            setShowAutoArchiveNotice(false);
+        }, 2200);
+        return () => window.clearTimeout(timer);
+    }, [showAutoArchiveNotice]);
 
     const load = useCallback(async () => {
         if (!classId) return;
@@ -157,54 +125,39 @@ export default function ClassDetail() {
                 ]);
                 setTasks(sopTasks);
                 setCourses(loadedCourses);
-            } else {
-                throw new Error("Record not found in DB");
+                await syncClassProgressByTasks(sopTasks);
             }
         } catch (err) {
-            console.warn("DB unavailable, falling back to mock data:", err);
-            // Fallback: look up from mock data
-            const mockItem = mockClasses.find((c) => c.id === classId);
-            if (mockItem) {
-                setCls(mockToRecord(mockItem));
-                setTasks(generateMockSopTasks(classId));
-                setCourses(generateMockCourses(classId));
-                setIsMockMode(true);
-            }
+            console.error("Failed to load class detail:", err);
+            setCls(null);
+            setTasks([]);
+            setCourses([]);
         } finally {
             setLoading(false);
         }
-    }, [classId]);
+    }, [classId, syncClassProgressByTasks]);
 
     useEffect(() => {
         load();
     }, [load]);
 
+    useEffect(() => {
+        setNoteDraft(cls?.notes ?? "");
+    }, [cls?.id, cls?.notes]);
+
     const handleTaskToggled = () => {
-        if (isMockMode) {
-            return;
-        }
         if (classId) {
-            getSopTasksByClassId(classId).then(setTasks).catch(console.error);
+            getSopTasksByClassId(classId)
+                .then(async (latest) => {
+                    setTasks(latest);
+                    await syncClassProgressByTasks(latest);
+                })
+                .catch(console.error);
         }
     };
 
     const handleAddCourse = async (name: string, days: string, startDate: string, endDate: string) => {
         if (!classId) return;
-        if (isMockMode) {
-            const newCourse: CourseRecord = {
-                id: `mock-course-${Math.random().toString(36).slice(2)}`,
-                classId,
-                name,
-                days,
-                startDate,
-                endDate,
-                orderIndex: courses.length,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
-            setCourses((prev) => [...prev, newCourse]);
-            return;
-        }
 
         await createDeliveryCourse({
             classId,
@@ -219,14 +172,26 @@ export default function ClassDetail() {
     };
 
     const handleDeleteCourse = async (courseId: string) => {
-        if (isMockMode) {
-            setCourses((prev) => prev.filter((c) => c.id !== courseId));
-            return;
-        }
         await deleteDeliveryCourse(courseId);
         if (classId) {
             const updatedCourses = await getCoursesByClassId(classId);
             setCourses(updatedCourses);
+        }
+    };
+
+    const handleSaveNotes = async () => {
+        if (!cls) return;
+        const normalized = noteDraft.trim() ? noteDraft.trim() : null;
+        const previous = cls.notes ?? null;
+        if (normalized === previous) return;
+        try {
+            setIsSavingNote(true);
+            await updateDeliveryClass(cls.id, { notes: normalized });
+            setCls((prev) => (prev ? { ...prev, notes: normalized } : prev));
+        } catch (err) {
+            console.error("Failed to save notes:", err);
+        } finally {
+            setIsSavingNote(false);
         }
     };
 
@@ -265,6 +230,20 @@ export default function ClassDetail() {
             transition={{ duration: 0.3 }}
             className="space-y-6"
         >
+            <AnimatePresence>
+                {showAutoArchiveNotice ? (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed left-1/2 top-6 z-40 -translate-x-1/2 rounded-2xl border border-emerald-400/40 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-200 shadow-lg shadow-emerald-500/20 backdrop-blur-sm"
+                    >
+                        恭喜你已完成该班级，该班级已自动归档
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
+
             {/* ─── Header ─── */}
             <header className="flex flex-wrap items-center gap-4">
                 <button
@@ -303,6 +282,11 @@ export default function ClassDetail() {
                             <InfoItem icon={<Users className="h-4 w-4" />} label="学员" value={`${cls.learners} 人`} />
                             <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="周期" value={dateRange} />
                             <InfoItem
+                                icon={<Users className="h-4 w-4" />}
+                                label="PO数"
+                                value={`${cls.teacherPo + cls.headteacherPo}（授课${cls.teacherPo} / 班主任${cls.headteacherPo}）`}
+                            />
+                            <InfoItem
                                 icon={<Tag className="h-4 w-4" />}
                                 label="类型"
                                 value={CLASS_TYPE_LABELS[cls.classType as ClassType] ?? cls.classType}
@@ -336,9 +320,28 @@ export default function ClassDetail() {
                         onDelete={handleDeleteCourse}
                     />
 
-                    {/* Next Session */}
-                    <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-5 py-3 text-sm text-[color:var(--muted)]">
-                        下次课程：{cls.nextSession}
+                    {/* Quick Reflection Notes */}
+                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                                讲师复盘快速记录板
+                            </h2>
+                            <button
+                                onClick={handleSaveNotes}
+                                disabled={isSavingNote}
+                                className="rounded-xl border border-[color:var(--border)] px-3 py-1.5 text-xs text-[color:var(--muted)] transition hover:text-[color:var(--text)] disabled:opacity-50"
+                            >
+                                {isSavingNote ? "保存中..." : "保存"}
+                            </button>
+                        </div>
+                        <textarea
+                            value={noteDraft}
+                            onChange={(event) => setNoteDraft(event.target.value)}
+                            onBlur={handleSaveNotes}
+                            rows={5}
+                            placeholder="记录课堂难点、学员反馈、下次教学调整点..."
+                            className="mt-4 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-sm text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+                        />
                     </div>
                 </div>
 

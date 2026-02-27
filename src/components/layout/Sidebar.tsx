@@ -15,6 +15,7 @@ const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/delivery", label: "Delivery Manager", icon: GraduationCap },
   { to: "/dev", label: "Dev Tracker", icon: KanbanSquare },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 type SidebarProps = {
@@ -105,10 +106,6 @@ export default function Sidebar({ theme, onToggleTheme }: SidebarProps) {
             <p className="text-xs text-[color:var(--muted)]">极速启动 · 无网可用</p>
           </div>
 
-          <button className="flex w-full items-center justify-between rounded-2xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--muted)] transition hover:bg-[color:var(--panel-strong)] hover:text-[color:var(--text)]">
-            <span className="font-medium">设置</span>
-            <Settings className="h-4 w-4" />
-          </button>
         </div>
       </div>
     </motion.aside>

@@ -129,7 +129,7 @@ export default function CourseList({ courses, onAdd, onDelete }: CourseListProps
                             </div>
                             <button
                                 onClick={() => onDelete(course.id)}
-                                className="grid h-7 w-7 place-items-center rounded-full text-rose-400 opacity-0 transition hover:bg-rose-500/10 group-hover:opacity-100"
+                                className="text-rose-400 opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
                                 title="删除课程"
                             >
                                 <Trash2 className="h-4 w-4" />

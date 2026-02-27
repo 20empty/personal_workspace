@@ -18,6 +18,8 @@ export type DeliveryClassInput = {
   endDate: string;
   classType?: ClassType;
   learners?: number;
+  teacherPo?: number;
+  headteacherPo?: number;
   status?: string;
   stage?: string;
   progress?: number;
@@ -38,8 +40,10 @@ export type DeliveryClassRecord = {
   startDate: string;
   endDate: string;
   learners: number;
+  teacherPo: number;
+  headteacherPo: number;
   progress: number;
-  nextSession: string;
+  nextSession?: string;
   focus: string[];
   archiveState: string;
   notes: string | null;
@@ -64,6 +68,16 @@ export type CourseRecord = {
   days: string;
   startDate: string;
   endDate: string;
+  orderIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SopTemplateRecord = {
+  id: string;
+  classType: ClassType;
+  stage: string;
+  title: string;
   orderIndex: number;
   createdAt: string;
   updatedAt: string;
@@ -94,8 +108,10 @@ const mapRow = (row: Record<string, unknown>): DeliveryClassRecord => ({
   startDate: row.start_date as string,
   endDate: row.end_date as string,
   learners: (row.learners as number) ?? 0,
+  teacherPo: toNumber(row.teacher_po),
+  headteacherPo: toNumber(row.headteacher_po),
   progress: (row.progress as number) ?? 0,
-  nextSession: (row.next_session as string) ?? "待确认",
+  nextSession: (row.next_session as string) ?? undefined,
   focus: parseFocus(row.focus),
   archiveState: (row.archive_state as string) ?? "待归档",
   notes: (row.notes as string) ?? null,
@@ -121,6 +137,16 @@ const mapCourseRow = (row: Record<string, unknown>): CourseRecord => ({
   startDate: row.start_date as string,
   endDate: row.end_date as string,
   orderIndex: (row.order_index as number) ?? 0,
+  createdAt: row.created_at as string,
+  updatedAt: row.updated_at as string,
+});
+
+const mapSopTemplateRow = (row: Record<string, unknown>): SopTemplateRecord => ({
+  id: row.id as string,
+  classType: (row.class_type as ClassType) ?? "centralized",
+  stage: row.stage as string,
+  title: row.title as string,
+  orderIndex: toNumber(row.order_index),
   createdAt: row.created_at as string,
   updatedAt: row.updated_at as string,
 });
@@ -165,7 +191,7 @@ const CENTRALIZED_TASKS: SopItem[] = [
   { stage: "post", title: "欢送及返程确认" },
 ];
 
-function getSopTemplate(classType: ClassType): SopItem[] {
+function getDefaultSopTemplate(classType: ClassType): SopItem[] {
   const specific: Record<ClassType, SopItem[]> = {
     overseas: OVERSEAS_TASKS,
     domestic: DOMESTIC_TASKS,
@@ -178,6 +204,12 @@ function getSopTemplate(classType: ClassType): SopItem[] {
   return merged;
 }
 
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number.parseInt(value, 10) || 0;
+  return 0;
+}
+
 /* ───────── Ensure Tables Exist ───────── */
 
 async function ensureTables() {
@@ -186,6 +218,20 @@ async function ensureTables() {
   try {
     await db.execute(
       `ALTER TABLE delivery_classes ADD COLUMN class_type TEXT NOT NULL DEFAULT 'centralized'`
+    );
+  } catch {
+    // column already exists – ignore
+  }
+  try {
+    await db.execute(
+      `ALTER TABLE delivery_classes ADD COLUMN teacher_po INTEGER NOT NULL DEFAULT 0`
+    );
+  } catch {
+    // column already exists – ignore
+  }
+  try {
+    await db.execute(
+      `ALTER TABLE delivery_classes ADD COLUMN headteacher_po INTEGER NOT NULL DEFAULT 0`
     );
   } catch {
     // column already exists – ignore
@@ -216,6 +262,41 @@ async function ensureTables() {
       FOREIGN KEY (class_id) REFERENCES delivery_classes(id) ON DELETE CASCADE
     )
   `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS delivery_sop_templates (
+      id          TEXT PRIMARY KEY,
+      class_type  TEXT NOT NULL,
+      stage       TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  const existingTemplates = await db.select<Record<string, unknown>[]>(
+    "SELECT COUNT(*) as cnt FROM delivery_sop_templates"
+  );
+  if (toNumber(existingTemplates[0]?.cnt) === 0) {
+    const now = new Date().toISOString();
+    const classTypes: ClassType[] = ["overseas", "domestic", "centralized"];
+    for (const classType of classTypes) {
+      const stageOrderCounter: Record<string, number> = {
+        pre: 0,
+        during: 0,
+        post: 0,
+      };
+      for (const item of getDefaultSopTemplate(classType)) {
+        const orderIndex = stageOrderCounter[item.stage] ?? 0;
+        stageOrderCounter[item.stage] = orderIndex + 1;
+        await db.execute(
+          `INSERT INTO delivery_sop_templates
+             (id, class_type, stage, title, order_index, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [crypto.randomUUID(), classType, item.stage, item.title, orderIndex, now, now]
+        );
+      }
+    }
+  }
 }
 
 let _tablesReady: Promise<void> | null = null;
@@ -258,9 +339,9 @@ export async function createDeliveryClass(
   await db.execute(
     `INSERT INTO delivery_classes
        (id, code, title, location, status, stage, class_type, start_date, end_date,
-        learners, progress, next_session, focus, archive_state, notes,
+        learners, teacher_po, headteacher_po, progress, next_session, focus, archive_state, notes,
         created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       id,
       input.code,
@@ -272,6 +353,8 @@ export async function createDeliveryClass(
       input.startDate,
       input.endDate,
       input.learners ?? 0,
+      input.teacherPo ?? 0,
+      input.headteacherPo ?? 0,
       input.progress ?? 0,
       input.nextSession ?? "待确认",
       serializeFocus(input.focus),
@@ -312,6 +395,8 @@ export async function updateDeliveryClass(
   if (patch.startDate !== undefined) push("start_date", patch.startDate);
   if (patch.endDate !== undefined) push("end_date", patch.endDate);
   if (patch.learners !== undefined) push("learners", patch.learners);
+  if (patch.teacherPo !== undefined) push("teacher_po", patch.teacherPo);
+  if (patch.headteacherPo !== undefined) push("headteacher_po", patch.headteacherPo);
   if (patch.progress !== undefined) push("progress", patch.progress);
   if (patch.nextSession !== undefined) push("next_session", patch.nextSession);
   if (patch.focus !== undefined) push("focus", serializeFocus(patch.focus));
@@ -369,15 +454,32 @@ export async function seedSopTasksForClass(
   classId: string,
   classType: ClassType
 ): Promise<void> {
+  await tablesReady();
   const db = await getDb();
   const existing = await db.select<Record<string, unknown>[]>(
     "SELECT COUNT(*) as cnt FROM delivery_sop_tasks WHERE class_id = $1",
     [classId]
   );
-  const count = (existing[0]?.cnt as number) ?? 0;
+  const count = toNumber(existing[0]?.cnt);
   if (count > 0) return; // already seeded
 
-  const template = getSopTemplate(classType);
+  const templateRows = await db.select<Record<string, unknown>[]>(
+    `SELECT stage, title FROM delivery_sop_templates
+      WHERE class_type = $1
+      ORDER BY
+        CASE stage
+          WHEN 'pre' THEN 0
+          WHEN 'during' THEN 1
+          WHEN 'post' THEN 2
+          ELSE 99
+        END ASC,
+        order_index ASC`,
+    [classType]
+  );
+  const template = templateRows.map((row) => ({
+    stage: row.stage as string,
+    title: row.title as string,
+  }));
   const now = new Date().toISOString();
   for (let i = 0; i < template.length; i++) {
     const item = template[i];
@@ -388,6 +490,124 @@ export async function seedSopTasksForClass(
       [taskId, classId, item.stage, item.title, "pending", i, now]
     );
   }
+}
+
+async function normalizeTemplateStageOrder(classType: ClassType, stage: string) {
+  const db = await getDb();
+  const rows = await db.select<Record<string, unknown>[]>(
+    `SELECT id FROM delivery_sop_templates
+      WHERE class_type = $1 AND stage = $2
+      ORDER BY order_index ASC, created_at ASC`,
+    [classType, stage]
+  );
+  const now = new Date().toISOString();
+  for (let i = 0; i < rows.length; i++) {
+    await db.execute(
+      "UPDATE delivery_sop_templates SET order_index = $1, updated_at = $2 WHERE id = $3",
+      [i, now, rows[i].id as string]
+    );
+  }
+}
+
+export async function listSopTemplatesByClassType(
+  classType: ClassType
+): Promise<SopTemplateRecord[]> {
+  await tablesReady();
+  const db = await getDb();
+  const rows = await db.select<Record<string, unknown>[]>(
+    `SELECT * FROM delivery_sop_templates
+      WHERE class_type = $1
+      ORDER BY
+        CASE stage
+          WHEN 'pre' THEN 0
+          WHEN 'during' THEN 1
+          WHEN 'post' THEN 2
+          ELSE 99
+        END ASC,
+        order_index ASC`,
+    [classType]
+  );
+  return rows.map(mapSopTemplateRow);
+}
+
+export async function createSopTemplate(input: {
+  classType: ClassType;
+  stage: string;
+  title: string;
+}): Promise<string> {
+  await tablesReady();
+  const db = await getDb();
+  const rows = await db.select<Record<string, unknown>[]>(
+    "SELECT COUNT(*) as cnt FROM delivery_sop_templates WHERE class_type = $1 AND stage = $2",
+    [input.classType, input.stage]
+  );
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO delivery_sop_templates
+       (id, class_type, stage, title, order_index, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, input.classType, input.stage, input.title, toNumber(rows[0]?.cnt), now, now]
+  );
+  return id;
+}
+
+export async function deleteSopTemplate(id: string): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  const rows = await db.select<Record<string, unknown>[]>(
+    "SELECT class_type, stage FROM delivery_sop_templates WHERE id = $1",
+    [id]
+  );
+  if (!rows[0]) return;
+  const classType = (rows[0].class_type as ClassType) ?? "centralized";
+  const stage = rows[0].stage as string;
+  await db.execute("DELETE FROM delivery_sop_templates WHERE id = $1", [id]);
+  await normalizeTemplateStageOrder(classType, stage);
+}
+
+export async function moveSopTemplate(
+  id: string,
+  direction: "up" | "down"
+): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  const currentRows = await db.select<Record<string, unknown>[]>(
+    "SELECT id, class_type, stage, order_index FROM delivery_sop_templates WHERE id = $1",
+    [id]
+  );
+  const current = currentRows[0];
+  if (!current) return;
+
+  const classType = (current.class_type as ClassType) ?? "centralized";
+  const stage = current.stage as string;
+  const currentOrder = toNumber(current.order_index);
+
+  const targetRows = await db.select<Record<string, unknown>[]>(
+    direction === "up"
+      ? `SELECT id, order_index FROM delivery_sop_templates
+          WHERE class_type = $1 AND stage = $2 AND order_index < $3
+          ORDER BY order_index DESC
+          LIMIT 1`
+      : `SELECT id, order_index FROM delivery_sop_templates
+          WHERE class_type = $1 AND stage = $2 AND order_index > $3
+          ORDER BY order_index ASC
+          LIMIT 1`,
+    [classType, stage, currentOrder]
+  );
+  const target = targetRows[0];
+  if (!target) return;
+
+  const now = new Date().toISOString();
+  await db.execute(
+    "UPDATE delivery_sop_templates SET order_index = $1, updated_at = $2 WHERE id = $3",
+    [toNumber(target.order_index), now, id]
+  );
+  await db.execute(
+    "UPDATE delivery_sop_templates SET order_index = $1, updated_at = $2 WHERE id = $3",
+    [currentOrder, now, target.id as string]
+  );
+  await normalizeTemplateStageOrder(classType, stage);
 }
 
 /* ───────── CRUD: Courses ───────── */

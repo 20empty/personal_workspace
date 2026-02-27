@@ -12,6 +12,8 @@ export const deliveryClasses = sqliteTable("delivery_classes", {
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   learners: integer("learners").notNull().default(0),
+  teacherPo: integer("teacher_po").notNull().default(0),
+  headteacherPo: integer("headteacher_po").notNull().default(0),
   progress: integer("progress").notNull().default(0),
   nextSession: text("next_session").notNull().default("待确认"),
   focus: text("focus").notNull().default("[]"),

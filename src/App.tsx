@@ -5,6 +5,7 @@ import DeliveryManager from "./pages/DeliveryManager";
 import ClassDetail from "./pages/ClassDetail";
 import DevTracker from "./pages/DevTracker";
 import Profile from "./pages/Profile";
+import Settings from "./pages/Settings";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="delivery/:classId" element={<ClassDetail />} />
         <Route path="dev" element={<DevTracker />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

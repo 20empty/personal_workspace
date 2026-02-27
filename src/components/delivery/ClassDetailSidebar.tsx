@@ -84,10 +84,6 @@ export default function ClassDetailSidebar({ selected, onClose }: ClassDetailSid
                         ))}
                     </ul>
                 </div>
-
-                <div className="mt-6 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 text-sm text-[color:var(--muted)]">
-                    下次课程：{selected.nextSession}
-                </div>
             </motion.aside>
         </motion.div>
     );

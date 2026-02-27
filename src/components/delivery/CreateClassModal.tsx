@@ -20,6 +20,8 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
         startDate: "",
         endDate: "",
         learners: "",
+        teacherPo: "",
+        headteacherPo: "",
         notes: "",
     });
     const [formErrors, setFormErrors] = useState({
@@ -41,6 +43,8 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             startDate: "",
             endDate: "",
             learners: "",
+            teacherPo: "",
+            headteacherPo: "",
             notes: "",
         });
         setFormErrors({
@@ -66,6 +70,8 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             return;
         }
         const dateRange = `${formatDate(form.startDate)} - ${formatDate(form.endDate)}`;
+        const teacherPo = Number.parseInt(form.teacherPo || "0", 10) || 0;
+        const headteacherPo = Number.parseInt(form.headteacherPo || "0", 10) || 0;
         const payload: CreatePayload = {
             code: form.code,
             title: form.title,
@@ -74,10 +80,11 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             startDate: form.startDate,
             endDate: form.endDate,
             learners: Number.parseInt(form.learners || "0", 10) || 0,
+            teacherPo,
+            headteacherPo,
             status: "已排期",
             stage: "upcoming",
             progress: 0,
-            nextSession: "待确认",
             focus: form.notes ? [form.notes] : ["待完善"],
             archiveState: "待归档",
             notes: form.notes ? form.notes : null,
@@ -93,8 +100,9 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             startDate: payload.startDate,
             endDate: payload.endDate,
             learners: payload.learners,
+            teacherPo: payload.teacherPo,
+            headteacherPo: payload.headteacherPo,
             progress: payload.progress,
-            nextSession: payload.nextSession,
             focus: payload.focus,
             archiveState: payload.archiveState,
         };
@@ -244,7 +252,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                         ) : null}
                     </label>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-3">
                         <label className="block text-sm text-[color:var(--muted)]">
                             学员规模
                             <input
@@ -256,6 +264,34 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                                 placeholder="例如：30"
                             />
                         </label>
+                        <label className="block text-sm text-[color:var(--muted)]">
+                            授课PO
+                            <input
+                                value={form.teacherPo}
+                                onChange={(event) =>
+                                    setForm((prev) => ({ ...prev, teacherPo: event.target.value }))
+                                }
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+                                placeholder="例如：2"
+                            />
+                        </label>
+                        <label className="block text-sm text-[color:var(--muted)]">
+                            班主任PO
+                            <input
+                                value={form.headteacherPo}
+                                onChange={(event) =>
+                                    setForm((prev) => ({ ...prev, headteacherPo: event.target.value }))
+                                }
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+                                placeholder="例如：1"
+                            />
+                        </label>
+                    </div>
+
+                    <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 text-sm text-[color:var(--muted)]">
+                        总PO：<span className="font-semibold text-[color:var(--text)]">
+                            {(Number.parseInt(form.teacherPo || "0", 10) || 0) + (Number.parseInt(form.headteacherPo || "0", 10) || 0)}
+                        </span>
                     </div>
 
                     <label className="block text-sm text-[color:var(--muted)]">

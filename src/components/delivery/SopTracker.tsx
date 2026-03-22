@@ -57,7 +57,7 @@ export default function SopTracker({ tasks, onTaskToggled }: SopTrackerProps) {
     return (
         <div className="space-y-5">
             {/* Overall Progress */}
-            <div>
+            <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
                 <div className="flex items-center justify-between text-xs text-[color:var(--muted)]">
                     <span>SOP 总进度</span>
                     <span className="text-[color:var(--text)] font-medium">{pct}%</span>
@@ -70,7 +70,7 @@ export default function SopTracker({ tasks, onTaskToggled }: SopTrackerProps) {
                         transition={{ duration: 0.6, ease: "easeOut" }}
                     />
                 </div>
-                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                <p className="mt-2 text-xs text-[color:var(--muted)]">
                     {done}/{total} 项已完成
                 </p>
             </div>
@@ -82,12 +82,12 @@ export default function SopTracker({ tasks, onTaskToggled }: SopTrackerProps) {
                 const isExpanded = expanded[stage] ?? true;
 
                 return (
-                    <div key={stage} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] overflow-hidden">
+                    <div key={stage} className="overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] shadow-sm shadow-black/5">
                         {/* Stage Header */}
                         <button
                             type="button"
                             onClick={() => toggleExpand(stage)}
-                            className="flex w-full items-center justify-between px-4 py-3 transition hover:bg-white/[.03]"
+                            className="flex w-full items-center justify-between px-4 py-4 transition hover:bg-white/[.03]"
                         >
                             <div className="flex items-center gap-3">
                                 <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${bg} ${color}`}>
@@ -105,9 +105,9 @@ export default function SopTracker({ tasks, onTaskToggled }: SopTrackerProps) {
                         </button>
 
                         {/* Stage Progress Bar */}
-                        <div className="mx-4 h-1 rounded-full bg-black/20 overflow-hidden">
+                        <div className="mx-4 h-1.5 overflow-hidden rounded-full bg-black/20">
                             <motion.div
-                                className={`h-1 rounded-full ${stage === "pre"
+                                className={`h-1.5 rounded-full ${stage === "pre"
                                         ? "bg-amber-400"
                                         : stage === "during"
                                             ? "bg-sky-400"
@@ -135,7 +135,7 @@ export default function SopTracker({ tasks, onTaskToggled }: SopTrackerProps) {
                                             <motion.li
                                                 key={task.id}
                                                 layout
-                                                className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-white/[.03] cursor-pointer"
+                                                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-white/[.03]"
                                                 onClick={() => handleToggle(task)}
                                             >
                                                 <span className="flex-shrink-0">

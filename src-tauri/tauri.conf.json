@@ -1,9 +1,11 @@
 {
   "$schema": "https://tauri.app/schemas/v2.json",
   "productName": "Classroom",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "identifier": "com.classroom.desktop",
   "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },

@@ -8,6 +8,7 @@ import {
     CalendarClock,
     Tag,
     Loader2,
+    Pencil,
 } from "lucide-react";
 import {
     getDeliveryClass,
@@ -60,6 +61,26 @@ export default function ClassDetail() {
     const [loading, setLoading] = useState(true);
     const [noteDraft, setNoteDraft] = useState("");
     const [isSavingNote, setIsSavingNote] = useState(false);
+    const [isEditingInfo, setIsEditingInfo] = useState(false);
+    const [isSavingInfo, setIsSavingInfo] = useState(false);
+    const [infoErrors, setInfoErrors] = useState({
+        title: "",
+        code: "",
+        location: "",
+        startDate: "",
+        endDate: "",
+    });
+    const [infoDraft, setInfoDraft] = useState({
+        title: "",
+        code: "",
+        location: "",
+        classType: "centralized" as ClassType,
+        startDate: "",
+        endDate: "",
+        learners: "",
+        teacherPo: "",
+        headteacherPo: "",
+    });
     const [showAutoArchiveNotice, setShowAutoArchiveNotice] = useState(false);
     const hasShownAutoArchiveNoticeRef = useRef(false);
 
@@ -145,6 +166,28 @@ export default function ClassDetail() {
         setNoteDraft(cls?.notes ?? "");
     }, [cls?.id, cls?.notes]);
 
+    useEffect(() => {
+        if (!cls) return;
+        setInfoDraft({
+            title: cls.title,
+            code: cls.code,
+            location: cls.location,
+            classType: cls.classType,
+            startDate: cls.startDate,
+            endDate: cls.endDate,
+            learners: cls.learners.toString(),
+            teacherPo: cls.teacherPo.toString(),
+            headteacherPo: cls.headteacherPo.toString(),
+        });
+        setInfoErrors({
+            title: "",
+            code: "",
+            location: "",
+            startDate: "",
+            endDate: "",
+        });
+    }, [cls]);
+
     const handleTaskToggled = () => {
         if (classId) {
             getSopTasksByClassId(classId)
@@ -192,6 +235,69 @@ export default function ClassDetail() {
             console.error("Failed to save notes:", err);
         } finally {
             setIsSavingNote(false);
+        }
+    };
+
+    const handleCancelInfoEdit = () => {
+        if (!cls) return;
+        setInfoDraft({
+            title: cls.title,
+            code: cls.code,
+            location: cls.location,
+            classType: cls.classType,
+            startDate: cls.startDate,
+            endDate: cls.endDate,
+            learners: cls.learners.toString(),
+            teacherPo: cls.teacherPo.toString(),
+            headteacherPo: cls.headteacherPo.toString(),
+        });
+        setInfoErrors({
+            title: "",
+            code: "",
+            location: "",
+            startDate: "",
+            endDate: "",
+        });
+        setIsEditingInfo(false);
+    };
+
+    const handleSaveInfo = async () => {
+        if (!cls) return;
+        const nextErrors = {
+            title: infoDraft.title.trim() ? "" : "请输入班级名称",
+            code: infoDraft.code.trim() ? "" : "请输入班级编号",
+            location: infoDraft.location.trim() ? "" : "请输入交付地点",
+            startDate: infoDraft.startDate ? "" : "请选择开始日期",
+            endDate: !infoDraft.endDate
+                ? "请选择结束日期"
+                : infoDraft.startDate && infoDraft.endDate < infoDraft.startDate
+                  ? "结束日期不能早于开始日期"
+                  : "",
+        };
+        setInfoErrors(nextErrors);
+        if (Object.values(nextErrors).some(Boolean)) return;
+
+        const patch = {
+            title: infoDraft.title.trim(),
+            code: infoDraft.code.trim(),
+            location: infoDraft.location.trim(),
+            classType: infoDraft.classType,
+            startDate: infoDraft.startDate,
+            endDate: infoDraft.endDate,
+            learners: Number.parseInt(infoDraft.learners || "0", 10) || 0,
+            teacherPo: Number.parseInt(infoDraft.teacherPo || "0", 10) || 0,
+            headteacherPo: Number.parseInt(infoDraft.headteacherPo || "0", 10) || 0,
+        };
+
+        try {
+            setIsSavingInfo(true);
+            await updateDeliveryClass(cls.id, patch);
+            setCls((prev) => (prev ? { ...prev, ...patch } : prev));
+            setIsEditingInfo(false);
+        } catch (err) {
+            console.error("Failed to save class info:", err);
+        } finally {
+            setIsSavingInfo(false);
         }
     };
 
@@ -273,33 +379,207 @@ export default function ClassDetail() {
                 {/* LEFT – Class Info */}
                 <div className="space-y-5">
                     {/* Meta Grid */}
-                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
-                        <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                            班级信息
-                        </h2>
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                            <InfoItem icon={<MapPin className="h-4 w-4" />} label="地点" value={cls.location} />
-                            <InfoItem icon={<Users className="h-4 w-4" />} label="学员" value={`${cls.learners} 人`} />
-                            <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="周期" value={dateRange} />
-                            <InfoItem
-                                icon={<Users className="h-4 w-4" />}
-                                label="PO数"
-                                value={`${cls.teacherPo + cls.headteacherPo}（授课${cls.teacherPo} / 班主任${cls.headteacherPo}）`}
-                            />
-                            <InfoItem
-                                icon={<Tag className="h-4 w-4" />}
-                                label="类型"
-                                value={CLASS_TYPE_LABELS[cls.classType as ClassType] ?? cls.classType}
-                            />
+                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-lg shadow-black/10">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                                    班级信息
+                                </h2>
+                                <p className="mt-2 text-sm text-[color:var(--muted)]">
+                                    在这里维护班级的基础资料与交付排期
+                                </p>
+                            </div>
+                            {isEditingInfo ? (
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={handleCancelInfoEdit}
+                                        disabled={isSavingInfo}
+                                        className="rounded-xl border border-[color:var(--border)] px-3 py-1.5 text-xs text-[color:var(--muted)] transition hover:text-[color:var(--text)] disabled:opacity-50"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleSaveInfo}
+                                        disabled={isSavingInfo}
+                                        className="rounded-xl bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                    >
+                                        {isSavingInfo ? "保存中..." : "保存"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setIsEditingInfo(true)}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border)] px-3 py-1.5 text-xs text-[color:var(--muted)] transition hover:text-[color:var(--text)]"
+                                >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    编辑信息
+                                </button>
+                            )}
                         </div>
+                        {isEditingInfo ? (
+                            <div className="mt-5 space-y-4">
+                                <div className="grid gap-4 rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5 sm:grid-cols-2">
+                                    <FormField
+                                        label="班级名称"
+                                        value={infoDraft.title}
+                                        onChange={(value) => setInfoDraft((prev) => ({ ...prev, title: value }))}
+                                        error={infoErrors.title}
+                                    />
+                                    <FormField
+                                        label="班级编号"
+                                        value={infoDraft.code}
+                                        onChange={(value) => setInfoDraft((prev) => ({ ...prev, code: value }))}
+                                        error={infoErrors.code}
+                                    />
+                                    <FormField
+                                        label="交付地点"
+                                        value={infoDraft.location}
+                                        onChange={(value) => setInfoDraft((prev) => ({ ...prev, location: value }))}
+                                        error={infoErrors.location}
+                                    />
+                                    <SelectField
+                                        label="班级类型"
+                                        value={infoDraft.classType}
+                                        onChange={(value) =>
+                                            setInfoDraft((prev) => ({ ...prev, classType: value as ClassType }))
+                                        }
+                                        options={Object.entries(CLASS_TYPE_LABELS).map(([value, label]) => ({
+                                            value,
+                                            label,
+                                        }))}
+                                    />
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-[1.2fr_0.8fr]">
+                                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+                                        <p className="text-xs uppercase tracking-[0.26em] text-[color:var(--muted)]">
+                                            交付排期
+                                        </p>
+                                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                            <DateField
+                                                label="开始日期"
+                                                value={infoDraft.startDate}
+                                                onChange={(value) =>
+                                                    setInfoDraft((prev) => ({ ...prev, startDate: value }))
+                                                }
+                                                error={infoErrors.startDate}
+                                            />
+                                            <DateField
+                                                label="结束日期"
+                                                value={infoDraft.endDate}
+                                                onChange={(value) =>
+                                                    setInfoDraft((prev) => ({ ...prev, endDate: value }))
+                                                }
+                                                error={infoErrors.endDate}
+                                            />
+                                        </div>
+                                        <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--muted)]">
+                                            当前周期：
+                                            <span className="ml-2 font-medium text-[color:var(--text)]">
+                                                {infoDraft.startDate && infoDraft.endDate
+                                                    ? `${formatDate(infoDraft.startDate)} - ${formatDate(infoDraft.endDate)}`
+                                                    : "请选择起止日期"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+                                        <p className="text-xs uppercase tracking-[0.26em] text-[color:var(--muted)]">
+                                            交付配置
+                                        </p>
+                                        <div className="mt-4 space-y-4">
+                                            <FormField
+                                                label="学员规模"
+                                                value={infoDraft.learners}
+                                                onChange={(value) => setInfoDraft((prev) => ({ ...prev, learners: value }))}
+                                            />
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <FormField
+                                                    label="授课PO"
+                                                    value={infoDraft.teacherPo}
+                                                    onChange={(value) => setInfoDraft((prev) => ({ ...prev, teacherPo: value }))}
+                                                />
+                                                <FormField
+                                                    label="班主任PO"
+                                                    value={infoDraft.headteacherPo}
+                                                    onChange={(value) => setInfoDraft((prev) => ({ ...prev, headteacherPo: value }))}
+                                                />
+                                            </div>
+                                            <div className="rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                                                总PO
+                                                <span className="ml-2 text-lg font-semibold">
+                                                    {(Number.parseInt(infoDraft.teacherPo || "0", 10) || 0) + (Number.parseInt(infoDraft.headteacherPo || "0", 10) || 0)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-5 space-y-4">
+                                <div className="rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/15 via-cyan-500/10 to-transparent p-5">
+                                    <div className="flex flex-wrap items-start justify-between gap-4">
+                                        <div>
+                                            <p className="text-xs uppercase tracking-[0.28em] text-sky-200/70">
+                                                {cls.code}
+                                            </p>
+                                            <h3 className="mt-2 text-2xl font-semibold text-[color:var(--text)]">
+                                                {cls.title}
+                                            </h3>
+                                            <p className="mt-3 text-sm text-[color:var(--muted)]">
+                                                {dateRange}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <InfoPill label="地点" value={cls.location} />
+                                            <InfoPill
+                                                label="类型"
+                                                value={CLASS_TYPE_LABELS[cls.classType as ClassType] ?? cls.classType}
+                                            />
+                                            <InfoPill label="学员" value={`${cls.learners} 人`} />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                    <InfoItem icon={<MapPin className="h-4 w-4" />} label="交付地点" value={cls.location} />
+                                    <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="交付周期" value={dateRange} />
+                                    <InfoItem
+                                        icon={<Tag className="h-4 w-4" />}
+                                        label="班级类型"
+                                        value={CLASS_TYPE_LABELS[cls.classType as ClassType] ?? cls.classType}
+                                    />
+                                    <InfoItem icon={<Users className="h-4 w-4" />} label="学员规模" value={`${cls.learners} 人`} />
+                                    <InfoItem icon={<Users className="h-4 w-4" />} label="授课PO" value={`${cls.teacherPo} 人`} />
+                                    <InfoItem icon={<Users className="h-4 w-4" />} label="班主任PO" value={`${cls.headteacherPo} 人`} />
+                                </div>
+                                <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--muted)]">
+                                    总PO：
+                                    <span className="ml-2 font-semibold text-[color:var(--text)]">
+                                        {cls.teacherPo + cls.headteacherPo}
+                                    </span>
+                                    <span className="ml-2 text-xs">
+                                        授课 {cls.teacherPo} / 班主任 {cls.headteacherPo}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Progress */}
-                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
-                        <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                            交付进度
-                        </h2>
-                        <div className="mt-4 h-3 w-full rounded-full bg-black/20 overflow-hidden">
+                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-lg shadow-black/10">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                                    交付进度
+                                </h2>
+                                <p className="mt-2 text-sm text-[color:var(--text)]/72">
+                                    根据 SOP 完成情况自动更新当前班级进度
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-sky-400/25 bg-sky-500/12 px-4 py-3 text-right">
+                                <p className="text-[10px] uppercase tracking-[0.24em] text-sky-100/82">Progress</p>
+                                <p className="mt-1 text-xl font-semibold text-sky-50">{cls.progress}%</p>
+                            </div>
+                        </div>
+                        <div className="mt-5 h-3 overflow-hidden rounded-full bg-black/20">
                             <motion.div
                                 className="h-3 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500"
                                 initial={{ width: 0 }}
@@ -307,9 +587,9 @@ export default function ClassDetail() {
                                 transition={{ duration: 0.6, ease: "easeOut" }}
                             />
                         </div>
-                        <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted)]">
-                            <span>当前进度</span>
-                            <span className="text-[color:var(--text)] font-medium">{cls.progress}%</span>
+                        <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--text)]/66">
+                            <span>当前 SOP 完成度</span>
+                            <span className="font-medium text-[color:var(--text)]">{cls.progress}%</span>
                         </div>
                     </div>
 
@@ -321,11 +601,16 @@ export default function ClassDetail() {
                     />
 
                     {/* Quick Reflection Notes */}
-                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-lg shadow-black/10">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                                讲师复盘快速记录板
-                            </h2>
+                            <div>
+                                <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                                    讲师复盘快速记录板
+                                </h2>
+                                <p className="mt-2 text-sm text-[color:var(--muted)]">
+                                    记录课堂难点、学员反馈和下次教学调整点
+                                </p>
+                            </div>
                             <button
                                 onClick={handleSaveNotes}
                                 disabled={isSavingNote}
@@ -340,17 +625,22 @@ export default function ClassDetail() {
                             onBlur={handleSaveNotes}
                             rows={5}
                             placeholder="记录课堂难点、学员反馈、下次教学调整点..."
-                            className="mt-4 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-sm text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+                            className="mt-5 w-full rounded-3xl border border-[color:var(--border)] bg-black/10 px-4 py-4 text-sm text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
                         />
                     </div>
                 </div>
 
                 {/* RIGHT – SOP Tracker */}
                 <div className="space-y-4">
-                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
-                        <h2 className="mb-4 text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                            SOP 任务清单
-                        </h2>
+                    <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-lg shadow-black/10">
+                        <div className="mb-4">
+                            <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                                SOP 任务清单
+                            </h2>
+                            <p className="mt-2 text-sm text-[color:var(--muted)]">
+                                分阶段跟踪训前、训中和训后交付事项
+                            </p>
+                        </div>
                         <SopTracker tasks={tasks} onTaskToggled={handleTaskToggled} />
                     </div>
                 </div>
@@ -371,12 +661,107 @@ function InfoItem({
     value: string;
 }) {
     return (
-        <div className="flex items-start gap-3 text-sm">
-            <span className="mt-0.5 shrink-0 text-[color:var(--muted)]">{icon}</span>
-            <div>
-                <p className="text-xs text-[color:var(--muted)]">{label}</p>
-                <p className="mt-0.5 text-[color:var(--text)]">{value}</p>
+        <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4 shadow-sm shadow-black/5">
+            <div className="flex items-start gap-3 text-sm">
+                <span className="mt-0.5 shrink-0 text-[color:var(--muted)]">{icon}</span>
+                <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{label}</p>
+                    <p className="mt-2 text-[15px] font-medium text-[color:var(--text)]">{value}</p>
+                </div>
             </div>
         </div>
+    );
+}
+
+function InfoPill({
+    label,
+    value,
+}: {
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-right backdrop-blur-sm">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-[color:var(--muted)]">{label}</p>
+            <p className="mt-1 text-sm font-medium text-[color:var(--text)]">{value}</p>
+        </div>
+    );
+}
+
+function DateField({
+    label,
+    value,
+    onChange,
+    error,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    error?: string;
+}) {
+    return (
+        <label className="block text-sm text-[color:var(--muted)]">
+            {label}
+            <input
+                type="date"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+            />
+            {error ? <span className="mt-2 block text-xs text-amber-300">{error}</span> : null}
+        </label>
+    );
+}
+
+function SelectField({
+    label,
+    value,
+    onChange,
+    options,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options: Array<{ value: string; label: string }>;
+}) {
+    return (
+        <label className="block text-sm text-[color:var(--muted)]">
+            {label}
+            <select
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+            >
+                {options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                        {option.label}
+                    </option>
+                ))}
+            </select>
+        </label>
+    );
+}
+
+function FormField({
+    label,
+    value,
+    onChange,
+    error,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    error?: string;
+}) {
+    return (
+        <label className="block text-sm text-[color:var(--muted)]">
+            {label}
+            <input
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)]"
+            />
+            {error ? <span className="mt-2 block text-xs text-amber-300">{error}</span> : null}
+        </label>
     );
 }

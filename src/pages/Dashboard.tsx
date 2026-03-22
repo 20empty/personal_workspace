@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { useProfile } from "../hooks/useProfile";
 import {
   CalendarClock,
+  CheckCircle2,
+  Clock3,
   TerminalSquare,
   Sparkles,
 } from "lucide-react";
@@ -12,6 +14,13 @@ import {
   type CourseRecord,
   type DeliveryClassRecord,
 } from "../db/delivery";
+import {
+  getQuarterLabel,
+  getTasksByProject,
+  listDevProjects,
+  type DevProjectRecord,
+  type DevTaskRecord,
+} from "../db/devtracker";
 
 type TeachingTask = {
   id: string;
@@ -25,6 +34,11 @@ type StatCard = {
   value: string;
   unit: string;
   hint: string;
+};
+
+type DevSnapshot = {
+  projects: DevProjectRecord[];
+  tasks: DevTaskRecord[];
 };
 
 function quarterOf(date: Date): number {
@@ -65,6 +79,7 @@ export default function Dashboard() {
   const { profile } = useProfile();
   const [classes, setClasses] = useState<DeliveryClassRecord[]>([]);
   const [teachingTasks, setTeachingTasks] = useState<TeachingTask[]>([]);
+  const [devSnapshot, setDevSnapshot] = useState<DevSnapshot>({ projects: [], tasks: [] });
 
   const now = new Date();
   const currentQuarter = quarterOf(now);
@@ -78,6 +93,14 @@ export default function Dashboard() {
         const rows = await listDeliveryClasses();
         if (cancelled) return;
         setClasses(rows);
+
+        const devProjects = await listDevProjects();
+        if (!cancelled) {
+          const devTaskGroups = await Promise.all(devProjects.map(project => getTasksByProject(project.id, true)));
+          if (!cancelled) {
+            setDevSnapshot({ projects: devProjects, tasks: devTaskGroups.flat() });
+          }
+        }
 
         const activeClasses = rows.filter((item) => item.stage === "active");
         const taskEntries = await Promise.all(
@@ -109,6 +132,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setClasses([]);
           setTeachingTasks([]);
+          setDevSnapshot({ projects: [], tasks: [] });
         }
       }
     };
@@ -124,7 +148,7 @@ export default function Dashboard() {
     const poValue = (item: DeliveryClassRecord) =>
       (item.teacherPo ?? 0) + (item.headteacherPo ?? 0);
 
-    const yearPo = completed
+    const yearDeliveredPo = completed
       .filter((item) => parseDate(item.endDate).getFullYear() === currentYear)
       .reduce((sum, item) => sum + poValue(item), 0);
 
@@ -149,12 +173,26 @@ export default function Dashboard() {
         .filter(Boolean)
     ).size;
 
+    const yearDevPo = devSnapshot.projects
+      .filter((project) => parseDate(project.endDate).getFullYear() === currentYear)
+      .reduce((sum, project) => sum + (project.poCount ?? 0), 0);
+
+    const quarterDevPo = devSnapshot.projects
+      .filter(project => {
+        const ddlDate = parseDate(project.endDate);
+        return (
+          ddlDate.getFullYear() === currentYear &&
+          quarterOf(ddlDate) === currentQuarter
+        );
+      })
+      .reduce((sum, project) => sum + (project.poCount ?? 0), 0);
+
     return [
       {
-        title: "本年度已交付 PO",
-        value: String(yearPo),
+        title: "本年度总 PO",
+        value: String(yearDeliveredPo + yearDevPo),
         unit: "个",
-        hint: `${currentYear} 年结算`,
+        hint: `${currentYear} 年交付 + 开发汇总`,
       },
       {
         title: "本季度已交付 PO",
@@ -163,10 +201,10 @@ export default function Dashboard() {
         hint: `Q${currentQuarter} 结算`,
       },
       {
-        title: "已完成开发 PO",
-        value: "--",
-        unit: "",
-        hint: "待开发",
+        title: "本季度开发 PO",
+        value: String(quarterDevPo),
+        unit: "个",
+        hint: `Q${currentQuarter} DDL 归属`,
       },
       {
         title: "已前往国家/地区",
@@ -175,7 +213,36 @@ export default function Dashboard() {
         hint: "海外出差（进行中+已交付）",
       },
     ];
-  }, [classes, currentQuarter, currentYear]);
+  }, [classes, currentQuarter, currentYear, devSnapshot.projects]);
+
+  const devInsights = useMemo(() => {
+    const activeProjects = devSnapshot.projects
+      .filter(project => project.status === "planning" || project.status === "inProgress")
+      .sort((a, b) => b.progress - a.progress)
+      .slice(0, 3);
+
+    const activeProjectMap = new Map(devSnapshot.projects.map(project => [project.id, project]));
+    const today = new Date().toISOString().slice(0, 10);
+    const nearDue = devSnapshot.tasks
+      .filter(task => task.status !== "submitted" && task.status !== "archived" && task.dueDate)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      .slice(0, 6);
+
+    const qaItems = devSnapshot.tasks.filter(task => task.status === "qaReview").slice(0, 3);
+    const readyToSubmit = devSnapshot.tasks.filter(task => task.status === "readyToSubmit").slice(0, 3);
+    const overdueCount = devSnapshot.tasks.filter(
+      task => task.status !== "submitted" && task.status !== "archived" && task.dueDate && task.dueDate < today
+    ).length;
+
+    return {
+      activeProjects,
+      activeProjectMap,
+      nearDue,
+      qaItems,
+      readyToSubmit,
+      overdueCount,
+    };
+  }, [devSnapshot]);
 
   const travelSummary = useMemo(() => {
     const firstActiveLocation = classes
@@ -283,18 +350,124 @@ export default function Dashboard() {
               <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
                 最近活跃
               </p>
-              <h2 className="text-lg font-semibold text-[color:var(--text)]">开发任务</h2>
+              <h2 className="text-lg font-semibold text-[color:var(--text)]">课程开发</h2>
             </div>
             <TerminalSquare className="h-5 w-5 text-[color:var(--muted)]" />
           </div>
-          <div className="mt-6 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <p className="text-sm text-[color:var(--text)]">待开发</p>
-            <p className="mt-2 text-xs text-[color:var(--muted)]">
-              开发 PO 与活跃任务统计将在后续版本接入。
-            </p>
+          <div className="mt-6 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <DevMiniStat
+                label="活跃项目"
+                value={String(devInsights.activeProjects.length)}
+                icon={<TerminalSquare className="h-4 w-4 text-sky-400" />}
+              />
+              <DevMiniStat
+                label="待提交"
+                value={String(devInsights.readyToSubmit.length)}
+                icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+              />
+              <DevMiniStat
+                label="逾期"
+                value={String(devInsights.overdueCount)}
+                icon={<Clock3 className="h-4 w-4 text-amber-400" />}
+              />
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-[color:var(--text)]">关键开发项</p>
+                <span className="text-xs text-[color:var(--muted)]">DDL / QA / 待提交</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {devInsights.nearDue.length === 0 &&
+                devInsights.qaItems.length === 0 &&
+                devInsights.readyToSubmit.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[color:var(--border)] px-4 py-5 text-sm text-[color:var(--muted)]">
+                    当前没有需要重点关注的课程开发交付物。
+                  </div>
+                ) : (
+                  [...devInsights.nearDue.slice(0, 2), ...devInsights.qaItems.slice(0, 1), ...devInsights.readyToSubmit.slice(0, 1)]
+                    .slice(0, 4)
+                    .map(task => (
+                      <div
+                        key={task.id}
+                        className="flex items-center justify-between rounded-2xl border border-[color:var(--border)] bg-[color:var(--background)]/60 px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-[color:var(--text)]">{task.title}</p>
+                          <p className="truncate text-xs text-[color:var(--muted)]">
+                            {devInsights.activeProjectMap.get(task.projectId)?.title ?? "未分组"}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-[color:var(--chip)] px-2 py-1 text-[10px] text-[color:var(--accent)]">
+                          {task.status === "qaReview"
+                            ? "QA 中"
+                            : task.status === "readyToSubmit"
+                              ? "待提交"
+                              : task.dueDate || "待排期"}
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-[color:var(--text)]">活跃课程项目</p>
+                <span className="text-xs text-[color:var(--muted)]">进度</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {devInsights.activeProjects.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[color:var(--border)] px-4 py-5 text-sm text-[color:var(--muted)]">
+                    当前没有进行中的课程开发项目。
+                  </div>
+                ) : (
+                  devInsights.activeProjects.map(project => (
+                    <div key={project.id} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background)]/60 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-[color:var(--text)]">{project.title}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted)]">
+                            <span>{project.endDate} 截止</span>
+                            <div className="flex items-center space-x-1">
+                              <div className="h-1.5 w-1.5 rounded-full bg-sky-500/50" />
+                              <span>{getQuarterLabel(project.endDate)}</span>
+                            </div>
+                            {project.poCount > 0 && (
+                              <div className="flex items-center space-x-1">
+                                <div className="h-1.5 w-1.5 rounded-full bg-amber-500/50" />
+                                <span>PO {project.poCount}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-sm font-semibold text-[color:var(--text)]">{project.progress}%</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--background)]">
+                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${project.progress}%` }} />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </section>
     </div>
   );
 }
+
+function DevMiniStat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-[color:var(--muted)]">{label}</span>
+        {icon}
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{value}</p>
+    </div>
+  );
+}
+

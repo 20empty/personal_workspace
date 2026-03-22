@@ -37,15 +37,20 @@ export default function CourseList({ courses, onAdd, onDelete }: CourseListProps
     const formatDate = (val: string) => val.replace(/-/g, ".");
 
     return (
-        <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+        <div className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6 shadow-lg shadow-black/10">
             <div className="flex items-center justify-between">
-                <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                    交付课程
-                </h2>
+                <div>
+                    <h2 className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                        交付课程
+                    </h2>
+                    <p className="mt-2 text-sm text-[color:var(--text)]/72">
+                        管理当前班级的课程编排与时间安排
+                    </p>
+                </div>
                 {!isAdding && (
                     <button
                         onClick={() => setIsAdding(true)}
-                        className="flex items-center gap-1 rounded-full bg-[color:var(--accent)] px-3 py-1 text-xs text-white transition hover:bg-[color:var(--accent)]/90"
+                        className="inline-flex items-center gap-2 rounded-xl bg-[color:var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[color:var(--accent)]/90"
                     >
                         <Plus className="h-3.5 w-3.5" />
                         添加课程
@@ -54,52 +59,64 @@ export default function CourseList({ courses, onAdd, onDelete }: CourseListProps
             </div>
 
             {isAdding && (
-                <form onSubmit={handleSubmit} className="mt-4 space-y-3 rounded-2xl border border-[color:var(--border)] bg-white/[0.02] p-4">
-                    <input
-                        autoFocus
-                        type="text"
-                        placeholder="课程名称 (例：云原生架构实训)"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
-                        required
-                    />
-                    <div className="grid grid-cols-[1fr_1fr_80px] gap-2">
+                <form onSubmit={handleSubmit} className="mt-5 space-y-4 rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+                    <label className="block text-sm text-[color:var(--text)]/78">
+                        课程名称
                         <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
-                            required
-                        />
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
-                            required
-                        />
-                        <input
+                            autoFocus
                             type="text"
-                            placeholder="天数"
-                            value={days}
-                            onChange={(e) => setDays(e.target.value)}
-                            className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+                            placeholder="例如：云原生架构实训"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
                             required
                         />
+                    </label>
+                    <div className="grid gap-4 sm:grid-cols-[1fr_1fr_110px]">
+                        <label className="block text-sm text-[color:var(--text)]/78">
+                            开始日期
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+                                required
+                            />
+                        </label>
+                        <label className="block text-sm text-[color:var(--text)]/78">
+                            结束日期
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+                                required
+                            />
+                        </label>
+                        <label className="block text-sm text-[color:var(--text)]/78">
+                            天数
+                            <input
+                                type="text"
+                                placeholder="5"
+                                value={days}
+                                onChange={(e) => setDays(e.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+                                required
+                            />
+                        </label>
                     </div>
                     <div className="flex items-center justify-end gap-2 pt-2">
                         <button
                             type="button"
                             onClick={() => setIsAdding(false)}
-                            className="rounded-xl border border-[color:var(--border)] px-4 py-1.5 text-xs text-[color:var(--muted)] hover:bg-white/[0.02]"
+                            className="rounded-xl border border-[color:var(--border)] px-4 py-2 text-xs text-[color:var(--text)]/70 hover:bg-white/[0.02]"
                             disabled={isSubmitting}
                         >
                             取消
                         </button>
                         <button
                             type="submit"
-                            className="rounded-xl bg-[color:var(--accent)] px-4 py-1.5 text-xs text-white hover:bg-[color:var(--accent)]/90 disabled:opacity-50"
+                            className="rounded-xl bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[color:var(--accent)]/90 disabled:opacity-50"
                             disabled={isSubmitting}
                         >
                             提交
@@ -109,20 +126,20 @@ export default function CourseList({ courses, onAdd, onDelete }: CourseListProps
             )}
 
             {courses.length > 0 ? (
-                <div className="mt-4 space-y-2">
+                <div className="mt-5 space-y-3">
                     {courses.map((course) => (
                         <div
                             key={course.id}
-                            className="group flex items-center justify-between rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-3 transition hover:border-[color:var(--accent)]/40 hover:bg-white/[0.02]"
+                            className="group flex items-center justify-between rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4 shadow-sm shadow-black/5 transition hover:border-[color:var(--accent)]/40 hover:bg-white/[0.02]"
                         >
                             <div>
                                 <h3 className="text-sm font-medium text-[color:var(--text)]">
                                     {course.name}
-                                    <span className="ml-2 inline-block rounded-md bg-[color:var(--border)] px-1.5 py-0.5 text-[10px] text-[color:var(--muted)]">
+                                    <span className="ml-2 inline-block rounded-full border border-sky-300/35 bg-sky-300/28 px-2.5 py-0.5 text-[10px] font-semibold text-sky-950">
                                         {course.days}天
                                     </span>
                                 </h3>
-                                <div className="mt-1 flex items-center gap-1 text-xs text-[color:var(--muted)]">
+                                <div className="mt-2 flex items-center gap-1 text-xs text-[color:var(--text)]/68">
                                     <Calendar className="h-3 w-3" />
                                     {formatDate(course.startDate)} - {formatDate(course.endDate)}
                                 </div>
@@ -139,7 +156,7 @@ export default function CourseList({ courses, onAdd, onDelete }: CourseListProps
                 </div>
             ) : (
                 !isAdding && (
-                    <div className="mt-4 text-center text-sm text-[color:var(--muted)]">
+                    <div className="mt-5 rounded-3xl border border-dashed border-[color:var(--border)] bg-black/10 px-6 py-10 text-center text-sm text-[color:var(--text)]/64">
                         尚未添加交付课程
                     </div>
                 )

@@ -1,6 +1,6 @@
 export const stats = [
   {
-    title: "本年度已交付 PO",
+    title: "本年度总 PO",
     value: 28,
     unit: "个",
     delta: "+6",

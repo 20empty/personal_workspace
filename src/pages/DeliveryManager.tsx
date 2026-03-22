@@ -190,14 +190,13 @@ export default function DeliveryManager() {
     };
   }, [activeClassIds]);
 
-  const handleClassCreated = async (payload: CreatePayload, fallback: ViewClass) => {
+  const handleClassCreated = async (payload: CreatePayload) => {
     try {
-      await createDeliveryClass(payload as any);
+      await createDeliveryClass(payload);
       const rows = await loadClasses();
       setClasses(rows);
     } catch (err) {
       console.error("Failed to create class:", err);
-      setClasses((prev) => [fallback, ...prev]);
     } finally {
       setIsCreateOpen(false);
     }
@@ -440,12 +439,19 @@ export default function DeliveryManager() {
                 </div>
               ) : (
                 archivedClasses.map((item) => (
-                  <motion.button
+                  <motion.div
                     key={item.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     whileHover={{ y: -2 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
                     onClick={() => navigate(`/delivery/${item.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(`/delivery/${item.id}`);
+                      }
+                    }}
                     className="group w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 text-left shadow-lg shadow-black/10 transition"
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -486,7 +492,7 @@ export default function DeliveryManager() {
                         </button>
                       </div>
                     </div>
-                  </motion.button>
+                  </motion.div>
                 )))}
             </div>
           </div>

@@ -2,12 +2,13 @@ import { getDb } from "./client";
 
 /* ───────── Types ───────── */
 
-export type ClassType = "overseas" | "domestic" | "centralized";
+export type ClassType = "overseas" | "domestic" | "centralized" | "online";
 
 export const CLASS_TYPE_LABELS: Record<ClassType, string> = {
   overseas: "海外出差培训",
   domestic: "国内出差培训",
   centralized: "集中培训",
+  online: "在线培训",
 };
 
 export type DeliveryClassInput = {
@@ -191,11 +192,23 @@ const CENTRALIZED_TASKS: SopItem[] = [
   { stage: "post", title: "欢送及返程确认" },
 ];
 
+const ONLINE_TASKS: SopItem[] = [
+  { stage: "pre", title: "确认直播平台与会议链接" },
+  { stage: "pre", title: "完成讲师及学员设备联调测试" },
+  { stage: "pre", title: "发送线上参训指引与课堂规则" },
+  { stage: "during", title: "监控在线签到与到课情况" },
+  { stage: "during", title: "处理实时互动与技术支持问题" },
+  { stage: "during", title: "录屏与课堂资料同步留档" },
+  { stage: "post", title: "整理回放链接与课件资料" },
+  { stage: "post", title: "收集线上学习反馈与完课数据" },
+];
+
 function getDefaultSopTemplate(classType: ClassType): SopItem[] {
   const specific: Record<ClassType, SopItem[]> = {
     overseas: OVERSEAS_TASKS,
     domestic: DOMESTIC_TASKS,
     centralized: CENTRALIZED_TASKS,
+    online: ONLINE_TASKS,
   };
   // Merge common + specific, then sort by stage order (pre → during → post)
   const stageOrder: Record<string, number> = { pre: 0, during: 1, post: 2 };
@@ -273,29 +286,34 @@ async function ensureTables() {
       updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  const existingTemplates = await db.select<Record<string, unknown>[]>(
-    "SELECT COUNT(*) as cnt FROM delivery_sop_templates"
-  );
-  if (toNumber(existingTemplates[0]?.cnt) === 0) {
+  const classTypes: ClassType[] = ["overseas", "domestic", "centralized", "online"];
+  const ensureTemplatesForClassType = async (classType: ClassType) => {
+    const existingTemplates = await db.select<Record<string, unknown>[]>(
+      "SELECT COUNT(*) as cnt FROM delivery_sop_templates WHERE class_type = $1",
+      [classType]
+    );
+    if (toNumber(existingTemplates[0]?.cnt) > 0) return;
+
     const now = new Date().toISOString();
-    const classTypes: ClassType[] = ["overseas", "domestic", "centralized"];
-    for (const classType of classTypes) {
-      const stageOrderCounter: Record<string, number> = {
-        pre: 0,
-        during: 0,
-        post: 0,
-      };
-      for (const item of getDefaultSopTemplate(classType)) {
-        const orderIndex = stageOrderCounter[item.stage] ?? 0;
-        stageOrderCounter[item.stage] = orderIndex + 1;
-        await db.execute(
-          `INSERT INTO delivery_sop_templates
-             (id, class_type, stage, title, order_index, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [crypto.randomUUID(), classType, item.stage, item.title, orderIndex, now, now]
-        );
-      }
+    const stageOrderCounter: Record<string, number> = {
+      pre: 0,
+      during: 0,
+      post: 0,
+    };
+    for (const item of getDefaultSopTemplate(classType)) {
+      const orderIndex = stageOrderCounter[item.stage] ?? 0;
+      stageOrderCounter[item.stage] = orderIndex + 1;
+      await db.execute(
+        `INSERT INTO delivery_sop_templates
+           (id, class_type, stage, title, order_index, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), classType, item.stage, item.title, orderIndex, now, now]
+      );
     }
+  };
+
+  for (const classType of classTypes) {
+    await ensureTemplatesForClassType(classType);
   }
 }
 

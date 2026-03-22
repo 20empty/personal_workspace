@@ -14,7 +14,7 @@ import { useProfile } from "../../hooks/useProfile";
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/delivery", label: "Delivery Manager", icon: GraduationCap },
-  { to: "/dev", label: "Dev Tracker", icon: KanbanSquare },
+  { to: "/dev", label: "Course Builder", icon: KanbanSquare },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

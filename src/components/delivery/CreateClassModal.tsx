@@ -1,29 +1,49 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
-import type { ViewClass } from "../../pages/DeliveryManager";
 import { CLASS_TYPE_LABELS, type ClassType, type DeliveryClassRecord } from "../../db/delivery";
 
 export type CreatePayload = Omit<DeliveryClassRecord, "id" | "createdAt" | "updatedAt">;
+type ClassFormState = {
+    title: string;
+    code: string;
+    location: string;
+    classType: ClassType;
+    startDate: string;
+    endDate: string;
+    learners: string;
+    teacherPo: string;
+    headteacherPo: string;
+    notes: string;
+};
+
+const getInitialForm = (initialValues?: Partial<CreatePayload>): ClassFormState => ({
+    title: initialValues?.title ?? "",
+    code: initialValues?.code ?? "",
+    location: initialValues?.location ?? "",
+    classType: initialValues?.classType ?? "centralized",
+    startDate: initialValues?.startDate ?? "",
+    endDate: initialValues?.endDate ?? "",
+    learners: initialValues?.learners?.toString() ?? "",
+    teacherPo: initialValues?.teacherPo?.toString() ?? "",
+    headteacherPo: initialValues?.headteacherPo?.toString() ?? "",
+    notes: initialValues?.notes ?? "",
+});
 
 interface CreateClassModalProps {
+    mode?: "create" | "edit";
+    initialValues?: Partial<CreatePayload>;
     onClose: () => void;
-    onSubmit: (payload: CreatePayload, fallback: ViewClass) => Promise<void>;
+    onSubmit: (payload: CreatePayload) => Promise<void>;
 }
 
-export default function CreateClassModal({ onClose, onSubmit }: CreateClassModalProps) {
-    const [form, setForm] = useState({
-        title: "",
-        code: "",
-        location: "",
-        classType: "centralized" as ClassType,
-        startDate: "",
-        endDate: "",
-        learners: "",
-        teacherPo: "",
-        headteacherPo: "",
-        notes: "",
-    });
+export default function CreateClassModal({
+    mode = "create",
+    initialValues,
+    onClose,
+    onSubmit,
+}: CreateClassModalProps) {
+    const [form, setForm] = useState<ClassFormState>(() => getInitialForm(initialValues));
     const [formErrors, setFormErrors] = useState({
         title: "",
         code: "",
@@ -33,20 +53,21 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
     });
 
     const formatDate = (value: string) => value.replace(/-/g, ".");
+    const isEditMode = mode === "edit";
 
-    const resetForm = () => {
-        setForm({
+    useEffect(() => {
+        setForm(getInitialForm(initialValues));
+        setFormErrors({
             title: "",
             code: "",
             location: "",
-            classType: "centralized" as ClassType,
             startDate: "",
             endDate: "",
-            learners: "",
-            teacherPo: "",
-            headteacherPo: "",
-            notes: "",
         });
+    }, [initialValues, isEditMode]);
+
+    const resetForm = () => {
+        setForm(getInitialForm(initialValues));
         setFormErrors({
             title: "",
             code: "",
@@ -62,14 +83,17 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             code: form.code ? "" : "请输入班级编号",
             location: form.location ? "" : "请输入交付地点",
             startDate: form.startDate ? "" : "请选择开始日期",
-            endDate: form.endDate ? "" : "请选择结束日期",
+            endDate: !form.endDate
+                ? "请选择结束日期"
+                : form.startDate && form.endDate < form.startDate
+                  ? "结束日期不能早于开始日期"
+                  : "",
         };
         setFormErrors(nextErrors);
         const hasError = Object.values(nextErrors).some(Boolean);
         if (hasError) {
             return;
         }
-        const dateRange = `${formatDate(form.startDate)} - ${formatDate(form.endDate)}`;
         const teacherPo = Number.parseInt(form.teacherPo || "0", 10) || 0;
         const headteacherPo = Number.parseInt(form.headteacherPo || "0", 10) || 0;
         const payload: CreatePayload = {
@@ -90,30 +114,16 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
             notes: form.notes ? form.notes : null,
         };
 
-        const viewPayload: Omit<ViewClass, "id" | "dateRange"> = {
-            code: payload.code,
-            title: payload.title,
-            location: payload.location,
-            classType: payload.classType,
-            status: payload.status,
-            stage: payload.stage,
-            startDate: payload.startDate,
-            endDate: payload.endDate,
-            learners: payload.learners,
-            teacherPo: payload.teacherPo,
-            headteacherPo: payload.headteacherPo,
-            progress: payload.progress,
-            focus: payload.focus,
-            archiveState: payload.archiveState,
-        };
+        if (isEditMode) {
+            payload.status = initialValues?.status ?? payload.status;
+            payload.stage = initialValues?.stage ?? payload.stage;
+            payload.progress = initialValues?.progress ?? payload.progress;
+            payload.focus = initialValues?.focus ?? payload.focus;
+            payload.archiveState = initialValues?.archiveState ?? payload.archiveState;
+            payload.nextSession = initialValues?.nextSession ?? payload.nextSession;
+        }
 
-        const fallback: ViewClass = {
-            id: `local-${Date.now()}`,
-            dateRange,
-            ...viewPayload,
-        };
-
-        await onSubmit(payload, fallback);
+        await onSubmit(payload);
     };
 
     return (
@@ -135,10 +145,10 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                            Create Class
+                            {isEditMode ? "Edit Class" : "Create Class"}
                         </p>
                         <h2 className="mt-2 text-xl font-semibold text-[color:var(--text)]">
-                            新建班级
+                            {isEditMode ? "编辑班级" : "新建班级"}
                         </h2>
                     </div>
                     <button
@@ -322,7 +332,7 @@ export default function CreateClassModal({ onClose, onSubmit }: CreateClassModal
                         onClick={handleCreate}
                         className="rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-500/20"
                     >
-                        保存
+                        {isEditMode ? "保存修改" : "保存"}
                     </button>
                 </div>
             </motion.div>

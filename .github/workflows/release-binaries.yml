@@ -14,6 +14,7 @@ on:
         default: windows
         options:
           - windows
+          - mainstream
           - all
 
 permissions:
@@ -23,7 +24,7 @@ jobs:
   build:
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.target_scope == 'windows' && '{"include":[{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x64"},{"os":"windows-latest","target":"i686-pc-windows-msvc","artifact":"windows-x86"}]}' || '{"include":[{"os":"macos-15-intel","target":"x86_64-apple-darwin","artifact":"macos-x64"},{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x64"},{"os":"windows-latest","target":"i686-pc-windows-msvc","artifact":"windows-x86"}]}') }}
+      matrix: ${{ fromJSON(inputs.target_scope == 'windows' && '{"include":[{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x64"},{"os":"windows-latest","target":"i686-pc-windows-msvc","artifact":"windows-x86"}]}' || inputs.target_scope == 'mainstream' && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64"},{"os":"windows-latest","target":"i686-pc-windows-msvc","artifact":"windows-x86"}]}' || '{"include":[{"os":"macos-15-intel","target":"x86_64-apple-darwin","artifact":"macos-x64"},{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x64"},{"os":"windows-latest","target":"i686-pc-windows-msvc","artifact":"windows-x86"}]}') }}
 
     runs-on: ${{ matrix.os }}
     env:

@@ -14,12 +14,14 @@ export const CLASS_TYPE_LABELS: Record<ClassType, string> = {
 export type DeliveryClassInput = {
   title: string;
   code: string;
+  contractNo?: string;
   location: string;
   startDate: string;
   endDate: string;
   classType?: ClassType;
   learners?: number;
   teacherPo?: number;
+  projectSupportPo?: number;
   headteacherPo?: number;
   status?: string;
   stage?: string;
@@ -33,6 +35,7 @@ export type DeliveryClassInput = {
 export type DeliveryClassRecord = {
   id: string;
   code: string;
+  contractNo: string;
   title: string;
   location: string;
   status: string;
@@ -42,6 +45,7 @@ export type DeliveryClassRecord = {
   endDate: string;
   learners: number;
   teacherPo: number;
+  projectSupportPo: number;
   headteacherPo: number;
   progress: number;
   nextSession?: string;
@@ -65,10 +69,16 @@ export type SopTaskRecord = {
 export type CourseRecord = {
   id: string;
   classId: string;
+  courseTemplateId: string | null;
   name: string;
+  level: string; // "L2" | "L3" | "L4"
   days: string;
   startDate: string;
   endDate: string;
+  schedulePath: string | null;
+  schedulePreviewPath: string | null;
+  scheduleFileName: string | null;
+  scheduleFileType: string | null;
   orderIndex: number;
   createdAt: string;
   updatedAt: string;
@@ -79,6 +89,20 @@ export type SopTemplateRecord = {
   classType: ClassType;
   stage: string;
   title: string;
+  orderIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CourseTemplateRecord = {
+  id: string;
+  name: string;
+  level: string;
+  days: string;
+  schedulePath: string | null;
+  schedulePreviewPath: string | null;
+  scheduleFileName: string | null;
+  scheduleFileType: string | null;
   orderIndex: number;
   createdAt: string;
   updatedAt: string;
@@ -101,6 +125,7 @@ const serializeFocus = (value?: string[]): string =>
 const mapRow = (row: Record<string, unknown>): DeliveryClassRecord => ({
   id: row.id as string,
   code: row.code as string,
+  contractNo: (row.contract_no as string) ?? "",
   title: row.title as string,
   location: row.location as string,
   status: row.status as string,
@@ -110,6 +135,7 @@ const mapRow = (row: Record<string, unknown>): DeliveryClassRecord => ({
   endDate: row.end_date as string,
   learners: (row.learners as number) ?? 0,
   teacherPo: toNumber(row.teacher_po),
+  projectSupportPo: toNumber(row.project_support_po),
   headteacherPo: toNumber(row.headteacher_po),
   progress: (row.progress as number) ?? 0,
   nextSession: (row.next_session as string) ?? undefined,
@@ -133,10 +159,16 @@ const mapSopRow = (row: Record<string, unknown>): SopTaskRecord => ({
 const mapCourseRow = (row: Record<string, unknown>): CourseRecord => ({
   id: row.id as string,
   classId: row.class_id as string,
+  courseTemplateId: (row.course_template_id as string) ?? null,
   name: row.name as string,
+  level: (row.level as string) ?? "L2",
   days: row.days as string,
   startDate: row.start_date as string,
   endDate: row.end_date as string,
+  schedulePath: (row.schedule_path as string) ?? null,
+  schedulePreviewPath: (row.schedule_preview_path as string) ?? null,
+  scheduleFileName: (row.schedule_file_name as string) ?? null,
+  scheduleFileType: (row.schedule_file_type as string) ?? null,
   orderIndex: (row.order_index as number) ?? 0,
   createdAt: row.created_at as string,
   updatedAt: row.updated_at as string,
@@ -147,6 +179,20 @@ const mapSopTemplateRow = (row: Record<string, unknown>): SopTemplateRecord => (
   classType: (row.class_type as ClassType) ?? "centralized",
   stage: row.stage as string,
   title: row.title as string,
+  orderIndex: toNumber(row.order_index),
+  createdAt: row.created_at as string,
+  updatedAt: row.updated_at as string,
+});
+
+const mapCourseTemplateRow = (row: Record<string, unknown>): CourseTemplateRecord => ({
+  id: row.id as string,
+  name: row.name as string,
+  level: (row.level as string) ?? "L2",
+  days: row.days as string,
+  schedulePath: (row.schedule_path as string) ?? null,
+  schedulePreviewPath: (row.schedule_preview_path as string) ?? null,
+  scheduleFileName: (row.schedule_file_name as string) ?? null,
+  scheduleFileType: (row.schedule_file_type as string) ?? null,
   orderIndex: toNumber(row.order_index),
   createdAt: row.created_at as string,
   updatedAt: row.updated_at as string,
@@ -219,7 +265,7 @@ function getDefaultSopTemplate(classType: ClassType): SopItem[] {
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") return value;
-  if (typeof value === "string") return Number.parseInt(value, 10) || 0;
+  if (typeof value === "string") return Number.parseFloat(value) || 0;
   return 0;
 }
 
@@ -249,6 +295,20 @@ async function ensureTables() {
   } catch {
     // column already exists – ignore
   }
+  try {
+    await db.execute(
+      `ALTER TABLE delivery_classes ADD COLUMN project_support_po INTEGER NOT NULL DEFAULT 0`
+    );
+  } catch {
+    // column already exists – ignore
+  }
+  try {
+    await db.execute(
+      `ALTER TABLE delivery_classes ADD COLUMN contract_no TEXT NOT NULL DEFAULT ''`
+    );
+  } catch {
+    // column already exists – ignore
+  }
   await db.execute(`
     CREATE TABLE IF NOT EXISTS delivery_sop_tasks (
       id          TEXT PRIMARY KEY,
@@ -265,7 +325,9 @@ async function ensureTables() {
     CREATE TABLE IF NOT EXISTS delivery_courses (
       id          TEXT PRIMARY KEY,
       class_id    TEXT NOT NULL,
+      course_template_id TEXT,
       name        TEXT NOT NULL,
+      level       TEXT NOT NULL DEFAULT 'L2',
       days        TEXT NOT NULL,
       start_date  TEXT NOT NULL,
       end_date    TEXT NOT NULL,
@@ -275,6 +337,17 @@ async function ensureTables() {
       FOREIGN KEY (class_id) REFERENCES delivery_classes(id) ON DELETE CASCADE
     )
   `);
+  // Migration for existing tables
+  try {
+    await db.execute(`ALTER TABLE delivery_courses ADD COLUMN level TEXT NOT NULL DEFAULT 'L2'`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_courses ADD COLUMN course_template_id TEXT`);
+  } catch {
+    // Already exists
+  }
   await db.execute(`
     CREATE TABLE IF NOT EXISTS delivery_sop_templates (
       id          TEXT PRIMARY KEY,
@@ -286,6 +359,41 @@ async function ensureTables() {
       updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS delivery_course_templates (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      level       TEXT NOT NULL DEFAULT 'L2',
+      days        TEXT NOT NULL,
+      schedule_path TEXT,
+      schedule_preview_path TEXT,
+      schedule_file_name TEXT,
+      schedule_file_type TEXT,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_path TEXT`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_preview_path TEXT`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_name TEXT`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_type TEXT`);
+  } catch {
+    // Already exists
+  }
   const classTypes: ClassType[] = ["overseas", "domestic", "centralized", "online"];
   const ensureTemplatesForClassType = async (classType: ClassType) => {
     const existingTemplates = await db.select<Record<string, unknown>[]>(
@@ -323,6 +431,29 @@ function tablesReady() {
   return _tablesReady;
 }
 
+async function ensureCourseTemplateSchedulePathColumn(db: Awaited<ReturnType<typeof getDb>>) {
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_path TEXT`);
+  } catch {
+    // Already exists or table has just been migrated.
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_preview_path TEXT`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_name TEXT`);
+  } catch {
+    // Already exists
+  }
+  try {
+    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_type TEXT`);
+  } catch {
+    // Already exists
+  }
+}
+
 /* ───────── CRUD: Delivery Classes ───────── */
 
 export async function listDeliveryClasses(): Promise<DeliveryClassRecord[]> {
@@ -356,13 +487,14 @@ export async function createDeliveryClass(
   const classType = input.classType ?? "centralized";
   await db.execute(
     `INSERT INTO delivery_classes
-       (id, code, title, location, status, stage, class_type, start_date, end_date,
-        learners, teacher_po, headteacher_po, progress, next_session, focus, archive_state, notes,
+       (id, code, contract_no, title, location, status, stage, class_type, start_date, end_date,
+        learners, teacher_po, project_support_po, headteacher_po, progress, next_session, focus, archive_state, notes,
         created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       id,
       input.code,
+      input.contractNo ?? "",
       input.title,
       input.location,
       input.status ?? "已排期",
@@ -372,6 +504,7 @@ export async function createDeliveryClass(
       input.endDate,
       input.learners ?? 0,
       input.teacherPo ?? 0,
+      input.projectSupportPo ?? 0,
       input.headteacherPo ?? 0,
       input.progress ?? 0,
       input.nextSession ?? "待确认",
@@ -405,6 +538,7 @@ export async function updateDeliveryClass(
   };
 
   if (patch.code !== undefined) push("code", patch.code);
+  if (patch.contractNo !== undefined) push("contract_no", patch.contractNo);
   if (patch.title !== undefined) push("title", patch.title);
   if (patch.location !== undefined) push("location", patch.location);
   if (patch.status !== undefined) push("status", patch.status);
@@ -414,6 +548,7 @@ export async function updateDeliveryClass(
   if (patch.endDate !== undefined) push("end_date", patch.endDate);
   if (patch.learners !== undefined) push("learners", patch.learners);
   if (patch.teacherPo !== undefined) push("teacher_po", patch.teacherPo);
+  if (patch.projectSupportPo !== undefined) push("project_support_po", patch.projectSupportPo);
   if (patch.headteacherPo !== undefined) push("headteacher_po", patch.headteacherPo);
   if (patch.progress !== undefined) push("progress", patch.progress);
   if (patch.nextSession !== undefined) push("next_session", patch.nextSession);
@@ -635,8 +770,18 @@ export async function getCoursesByClassId(
 ): Promise<CourseRecord[]> {
   await tablesReady();
   const db = await getDb();
+  await ensureCourseTemplateSchedulePathColumn(db);
   const rows = await db.select<Record<string, unknown>[]>(
-    "SELECT * FROM delivery_courses WHERE class_id = $1 ORDER BY start_date ASC, order_index ASC",
+    `SELECT
+       c.*,
+       tpl.schedule_path,
+       tpl.schedule_preview_path,
+       tpl.schedule_file_name,
+       tpl.schedule_file_type
+     FROM delivery_courses c
+     LEFT JOIN delivery_course_templates tpl ON tpl.id = c.course_template_id
+     WHERE c.class_id = $1
+     ORDER BY c.start_date ASC, c.order_index ASC`,
     [classId]
   );
   return rows.map(mapCourseRow);
@@ -649,22 +794,31 @@ export async function createDeliveryCourse(
   const db = await getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await db.execute(
-    `INSERT INTO delivery_courses
-       (id, class_id, name, days, start_date, end_date, order_index, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      id,
-      input.classId,
-      input.name,
-      input.days,
-      input.startDate,
-      input.endDate,
-      input.orderIndex,
-      now,
-      now,
-    ]
-  );
+
+  // Validate input to avoid cryptic DB errors
+  if (!input.classId || !input.name) {
+    throw new Error("Missing classId or name for course");
+  }
+
+  const sql = `
+    INSERT INTO delivery_courses 
+    (id, class_id, course_template_id, name, level, days, start_date, end_date, order_index, created_at, updated_at) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+  `;
+
+  await db.execute(sql, [
+    id,
+    input.classId,
+    input.courseTemplateId,
+    input.name,
+    input.level ?? "L2",
+    input.days,
+    input.startDate,
+    input.endDate,
+    input.orderIndex ?? 0,
+    now,
+    now,
+  ]);
   return id;
 }
 
@@ -672,4 +826,119 @@ export async function deleteDeliveryCourse(id: string): Promise<void> {
   await tablesReady();
   const db = await getDb();
   await db.execute("DELETE FROM delivery_courses WHERE id = $1", [id]);
+}
+
+/* ───────── CRUD: Course Templates ───────── */
+
+export async function listCourseTemplates(): Promise<CourseTemplateRecord[]> {
+  await tablesReady();
+  const db = await getDb();
+  await ensureCourseTemplateSchedulePathColumn(db);
+  const rows = await db.select<Record<string, unknown>[]>(
+    "SELECT * FROM delivery_course_templates ORDER BY order_index ASC, created_at ASC"
+  );
+  return rows.map(mapCourseTemplateRow);
+}
+
+export async function createCourseTemplate(input: {
+  id?: string;
+  name: string;
+  level: string;
+  days: string;
+  schedulePath?: string | null;
+  schedulePreviewPath?: string | null;
+  scheduleFileName?: string | null;
+  scheduleFileType?: string | null;
+}): Promise<string> {
+  await tablesReady();
+  const db = await getDb();
+  await ensureCourseTemplateSchedulePathColumn(db);
+  const id = input.id ?? crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const countRow = await db.select<Record<string, unknown>[]>(
+    "SELECT COUNT(*) as cnt FROM delivery_course_templates"
+  );
+  const nextOrder = toNumber(countRow[0]?.cnt);
+
+  await db.execute(
+    `INSERT INTO delivery_course_templates 
+     (id, name, level, days, schedule_path, schedule_preview_path, schedule_file_name, schedule_file_type, order_index, created_at, updated_at) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      id,
+      input.name,
+      input.level,
+      input.days,
+      input.schedulePath ?? null,
+      input.schedulePreviewPath ?? null,
+      input.scheduleFileName ?? null,
+      input.scheduleFileType ?? null,
+      nextOrder,
+      now,
+      now,
+    ]
+  );
+  return id;
+}
+
+export async function updateCourseTemplate(
+  id: string,
+  patch: Partial<Omit<CourseTemplateRecord, "id" | "createdAt" | "updatedAt">>
+): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  await ensureCourseTemplateSchedulePathColumn(db);
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (patch.name !== undefined) {
+    sets.push(`name = $${idx++}`);
+    values.push(patch.name);
+  }
+  if (patch.level !== undefined) {
+    sets.push(`level = $${idx++}`);
+    values.push(patch.level);
+  }
+  if (patch.days !== undefined) {
+    sets.push(`days = $${idx++}`);
+    values.push(patch.days);
+  }
+  if (patch.schedulePath !== undefined) {
+    sets.push(`schedule_path = $${idx++}`);
+    values.push(patch.schedulePath);
+  }
+  if (patch.schedulePreviewPath !== undefined) {
+    sets.push(`schedule_preview_path = $${idx++}`);
+    values.push(patch.schedulePreviewPath);
+  }
+  if (patch.scheduleFileName !== undefined) {
+    sets.push(`schedule_file_name = $${idx++}`);
+    values.push(patch.scheduleFileName);
+  }
+  if (patch.scheduleFileType !== undefined) {
+    sets.push(`schedule_file_type = $${idx++}`);
+    values.push(patch.scheduleFileType);
+  }
+  if (patch.orderIndex !== undefined) {
+    sets.push(`order_index = $${idx++}`);
+    values.push(patch.orderIndex);
+  }
+
+  if (sets.length === 0) return;
+
+  sets.push(`updated_at = $${idx++}`);
+  values.push(new Date().toISOString());
+
+  await db.execute(
+    `UPDATE delivery_course_templates SET ${sets.join(", ")} WHERE id = $${idx}`,
+    [...values, id]
+  );
+}
+
+export async function deleteCourseTemplate(id: string): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  await db.execute("DELETE FROM delivery_course_templates WHERE id = $1", [id]);
 }

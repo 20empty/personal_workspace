@@ -73,6 +73,7 @@ export default function ClassDetail() {
     const [infoDraft, setInfoDraft] = useState({
         title: "",
         code: "",
+        contractNo: "",
         location: "",
         classType: "centralized" as ClassType,
         startDate: "",
@@ -171,6 +172,7 @@ export default function ClassDetail() {
         setInfoDraft({
             title: cls.title,
             code: cls.code,
+            contractNo: cls.contractNo,
             location: cls.location,
             classType: cls.classType,
             startDate: cls.startDate,
@@ -199,15 +201,28 @@ export default function ClassDetail() {
         }
     };
 
-    const handleAddCourse = async (name: string, days: string, startDate: string, endDate: string) => {
+    const handleAddCourse = async (
+        name: string,
+        level: string,
+        days: string,
+        startDate: string,
+        endDate: string,
+        courseTemplateId: string | null
+    ) => {
         if (!classId) return;
 
         await createDeliveryCourse({
             classId,
+            courseTemplateId,
             name,
+            level,
             days,
             startDate,
             endDate,
+            schedulePath: null,
+            schedulePreviewPath: null,
+            scheduleFileName: null,
+            scheduleFileType: null,
             orderIndex: courses.length,
         });
         const updatedCourses = await getCoursesByClassId(classId);
@@ -243,6 +258,7 @@ export default function ClassDetail() {
         setInfoDraft({
             title: cls.title,
             code: cls.code,
+            contractNo: cls.contractNo,
             location: cls.location,
             classType: cls.classType,
             startDate: cls.startDate,
@@ -280,13 +296,14 @@ export default function ClassDetail() {
         const patch = {
             title: infoDraft.title.trim(),
             code: infoDraft.code.trim(),
+            contractNo: infoDraft.contractNo.trim(),
             location: infoDraft.location.trim(),
             classType: infoDraft.classType,
             startDate: infoDraft.startDate,
             endDate: infoDraft.endDate,
             learners: Number.parseInt(infoDraft.learners || "0", 10) || 0,
-            teacherPo: Number.parseInt(infoDraft.teacherPo || "0", 10) || 0,
-            headteacherPo: Number.parseInt(infoDraft.headteacherPo || "0", 10) || 0,
+            teacherPo: Number.parseFloat(infoDraft.teacherPo || "0") || 0,
+            headteacherPo: Number.parseFloat(infoDraft.headteacherPo || "0") || 0,
         };
 
         try {
@@ -432,6 +449,11 @@ export default function ClassDetail() {
                                         error={infoErrors.code}
                                     />
                                     <FormField
+                                        label="合同号"
+                                        value={infoDraft.contractNo}
+                                        onChange={(value) => setInfoDraft((prev) => ({ ...prev, contractNo: value }))}
+                                    />
+                                    <FormField
                                         label="交付地点"
                                         value={infoDraft.location}
                                         onChange={(value) => setInfoDraft((prev) => ({ ...prev, location: value }))}
@@ -498,7 +520,7 @@ export default function ClassDetail() {
                                                     onChange={(value) => setInfoDraft((prev) => ({ ...prev, teacherPo: value }))}
                                                 />
                                                 <FormField
-                                                    label="班主任PO"
+                                                    label="班主任时长(天)"
                                                     value={infoDraft.headteacherPo}
                                                     onChange={(value) => setInfoDraft((prev) => ({ ...prev, headteacherPo: value }))}
                                                 />
@@ -506,7 +528,7 @@ export default function ClassDetail() {
                                             <div className="rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
                                                 总PO
                                                 <span className="ml-2 text-lg font-semibold">
-                                                    {(Number.parseInt(infoDraft.teacherPo || "0", 10) || 0) + (Number.parseInt(infoDraft.headteacherPo || "0", 10) || 0)}
+                                                    {Number(((Number.parseFloat(infoDraft.teacherPo || "0") || 0) + (Number.parseFloat(infoDraft.headteacherPo || "0") || 0) * 0.1).toFixed(2))}
                                                 </span>
                                             </div>
                                         </div>
@@ -521,6 +543,11 @@ export default function ClassDetail() {
                                             <p className="text-xs uppercase tracking-[0.28em] text-sky-200/70">
                                                 {cls.code}
                                             </p>
+                                            {cls.contractNo ? (
+                                                <p className="mt-2 text-xs uppercase tracking-[0.28em] text-sky-100/60">
+                                                    合同号 · {cls.contractNo}
+                                                </p>
+                                            ) : null}
                                             <h3 className="mt-2 text-2xl font-semibold text-[color:var(--text)]">
                                                 {cls.title}
                                             </h3>
@@ -543,20 +570,30 @@ export default function ClassDetail() {
                                     <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="交付周期" value={dateRange} />
                                     <InfoItem
                                         icon={<Tag className="h-4 w-4" />}
+                                        label="班级编号"
+                                        value={cls.code}
+                                    />
+                                    <InfoItem
+                                        icon={<Tag className="h-4 w-4" />}
+                                        label="合同号"
+                                        value={cls.contractNo || "-"}
+                                    />
+                                    <InfoItem
+                                        icon={<Tag className="h-4 w-4" />}
                                         label="班级类型"
                                         value={CLASS_TYPE_LABELS[cls.classType as ClassType] ?? cls.classType}
                                     />
                                     <InfoItem icon={<Users className="h-4 w-4" />} label="学员规模" value={`${cls.learners} 人`} />
-                                    <InfoItem icon={<Users className="h-4 w-4" />} label="授课PO" value={`${cls.teacherPo} 人`} />
-                                    <InfoItem icon={<Users className="h-4 w-4" />} label="班主任PO" value={`${cls.headteacherPo} 人`} />
+                                    <InfoItem icon={<Users className="h-4 w-4" />} label="授课PO" value={`${cls.teacherPo} 个`} />
+                                    <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="班主任时长" value={`${cls.headteacherPo} 天`} />
                                 </div>
                                 <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--muted)]">
                                     总PO：
                                     <span className="ml-2 font-semibold text-[color:var(--text)]">
-                                        {cls.teacherPo + cls.headteacherPo}
+                                        {Number((cls.teacherPo + cls.headteacherPo * 0.1).toFixed(2))}
                                     </span>
                                     <span className="ml-2 text-xs">
-                                        授课 {cls.teacherPo} / 班主任 {cls.headteacherPo}
+                                        授课 {cls.teacherPo} 个 / 班主任 {cls.headteacherPo} 天
                                     </span>
                                 </div>
                             </div>

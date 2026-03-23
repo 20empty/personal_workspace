@@ -30,6 +30,7 @@ export type ViewClass = Pick<
   DeliveryClassRecord,
   | "id"
   | "code"
+  | "contractNo"
   | "title"
   | "location"
   | "status"
@@ -64,6 +65,7 @@ export default function DeliveryManager() {
   const toView = (item: DeliveryClassRecord): ViewClass => ({
     id: item.id,
     code: item.code,
+    contractNo: item.contractNo,
     title: item.title,
     location: item.location,
     status: item.status,
@@ -316,12 +318,15 @@ export default function DeliveryManager() {
                     onClick={() => navigate(`/delivery/${activeClass.id}`)}
                   >
                     <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
                           <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
                             {activeClass.code}
                           </p>
-                          <h3 className="mt-2 text-2xl font-semibold text-[color:var(--text)]">
+                          <h3 
+                            className="mt-2 line-clamp-2 text-2xl font-semibold leading-tight text-[color:var(--text)]"
+                            title={activeClass.title}
+                          >
                             {activeClass.title}
                           </h3>
                         </div>

@@ -48,14 +48,18 @@ export default function Sidebar({ theme, onToggleTheme }: SidebarProps) {
           </div>
           <NavLink
             to="/profile"
-            className="relative rounded-full transition hover:scale-105"
+            className="relative rounded-full transition hover:scale-105 active:scale-95"
             title="Profile"
           >
             <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-cyan-400/40 via-sky-500/30 to-indigo-500/40 blur-lg" />
-            <img
+            <motion.img
+              key={profile.avatar}
+              initial={{ opacity: 0.5, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
               src={profile.avatar}
               alt={profile.name}
-              className="relative h-12 w-12 rounded-full border border-[color:var(--border)] object-cover"
+              className="relative h-12 w-12 rounded-full border border-[color:var(--border)] object-cover shadow-inner"
             />
           </NavLink>
         </div>

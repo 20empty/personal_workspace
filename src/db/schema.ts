@@ -4,6 +4,7 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const deliveryClasses = sqliteTable("delivery_classes", {
   id: text("id").primaryKey(),
   code: text("code").notNull(),
+  contractNo: text("contract_no").notNull().default(""),
   title: text("title").notNull(),
   location: text("location").notNull(),
   status: text("status").notNull(),

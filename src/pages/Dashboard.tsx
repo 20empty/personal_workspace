@@ -146,7 +146,7 @@ export default function Dashboard() {
   const stats = useMemo<StatCard[]>(() => {
     const completed = classes.filter((item) => item.stage === "completed");
     const poValue = (item: DeliveryClassRecord) =>
-      (item.teacherPo ?? 0) + (item.headteacherPo ?? 0);
+      Number(((item.teacherPo ?? 0) + (item.headteacherPo ?? 0) * 0.1).toFixed(2));
 
     const yearDeliveredPo = completed
       .filter((item) => parseDate(item.endDate).getFullYear() === currentYear)
@@ -263,11 +263,13 @@ export default function Dashboard() {
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-wide text-[color:var(--text)]">
-              你好👋，{profile.name}老师
+              {profile.name ? `你好👋，${profile.name}老师` : "你好👋，欢迎回来"}
             </h1>
-            <span className="rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1 text-xs text-[color:var(--muted)]">
-              {profile.title}
-            </span>
+            {profile.title && (
+              <span className="rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1 text-xs text-[color:var(--muted)]">
+                {profile.title}
+              </span>
+            )}
           </div>
           <p className="mt-2 text-sm text-[color:var(--muted)]">
             交付全局概览
@@ -329,13 +331,13 @@ export default function Dashboard() {
                   key={task.id}
                   whileHover={{ y: -3 }}
                   transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                  className="flex items-center justify-between rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3"
                 >
-                  <div>
-                    <p className="text-sm text-[color:var(--text)]">{task.title}</p>
-                    <p className="text-xs text-[color:var(--muted)]">{task.location}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-[color:var(--text)]" title={task.title}>{task.title}</p>
+                    <p className="truncate text-xs text-[color:var(--muted)]" title={task.location}>{task.location}</p>
                   </div>
-                  <span className="text-sm text-[color:var(--muted-strong)]">
+                  <span className="shrink-0 text-sm text-[color:var(--muted-strong)]">
                     {task.schedule}
                   </span>
                 </motion.div>

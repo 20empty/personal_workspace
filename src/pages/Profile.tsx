@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { Camera, Link as LinkIcon, Sparkles, UserRound } from "lucide-react";
+import { Camera, Sparkles, UserRound } from "lucide-react";
 import { useProfile } from "../hooks/useProfile";
 
 export default function Profile() {
@@ -9,8 +9,7 @@ export default function Profile() {
   const fileId = useId();
 
   useEffect(() => {
-    setForm(profile);
-  }, [profile]);
+    setForm(profile);  }, [profile]);
 
   const profileStrength = useMemo(() => {
     const fields = [form.name, form.title, form.avatar];
@@ -47,27 +46,82 @@ export default function Profile() {
           ) : null}
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--panel-strong)]">
+        <div className="mt-6 overflow-hidden rounded-[2rem] border border-[color:var(--border)] bg-[color:var(--panel-strong)] group/avatar-section">
           <div className="relative p-6">
-            <div className="absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.28),_transparent_58%),radial-gradient(circle_at_top_left,_rgba(99,102,241,0.2),_transparent_42%)]" />
+            <div className="absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.28),_transparent_58%),radial-gradient(circle_at_top_left,_rgba(99,102,241,0.2),_transparent_42%)] transition-all duration-700 group-hover/avatar-section:opacity-80" />
             <div className="relative flex flex-col items-center text-center">
-              <div className="relative">
-                <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-cyan-400/40 via-sky-500/30 to-indigo-500/40 blur-xl" />
-                <img
-                  src={form.avatar}
-                  alt={form.name}
-                  className="relative h-32 w-32 rounded-full border border-white/20 object-cover shadow-xl shadow-sky-500/10"
-                />
-              </div>
-              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[color:var(--muted-strong)]">
-                <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+              <input
+                id={fileId}
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    if (typeof reader.result === "string") {
+                      const base64 = reader.result;
+                      setForm((prev) => ({ ...prev, avatar: base64 }));
+                      updateProfile({ ...form, avatar: base64 });
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+                className="hidden"
+              />
+              <label 
+                htmlFor={fileId} 
+                className="relative cursor-pointer group/avatar-img"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add("scale-105");
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("scale-105");
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("scale-105");
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && file.type.startsWith("image/")) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      if (typeof reader.result === "string") {
+                        const base64 = reader.result;
+                        setForm((prev) => ({ ...prev, avatar: base64 }));
+                        updateProfile({ ...form, avatar: base64 });
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              >
+                <div className="absolute -inset-4 rounded-full bg-gradient-to-br from-cyan-400/40 via-sky-500/30 to-indigo-500/40 blur-2xl opacity-0 transition-opacity duration-500 group-hover/avatar-img:opacity-100" />
+                <div className="relative h-32 w-32 transition-transform duration-300">
+                  <img
+                    src={form.avatar}
+                    alt={form.name}
+                    className="h-full w-full rounded-full border-2 border-white/20 object-cover shadow-2xl transition-all duration-500 group-hover/avatar-img:scale-[1.03] group-hover/avatar-img:border-cyan-400/50"
+                  />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center rounded-full bg-black/40 opacity-0 transition-all duration-300 group-hover/avatar-img:opacity-100 backdrop-blur-[2px]">
+                    <Camera className="h-6 w-6 text-white mb-1" />
+                    <span className="text-[10px] uppercase font-bold text-white tracking-widest">
+                      更换头像
+                    </span>
+                  </div>
+                </div>
+              </label>
+              
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[color:var(--muted-strong)] backdrop-blur-md">
+                <Sparkles className="h-3.5 w-3.5 text-sky-400 animate-pulse" />
                 资料完整度 {profileStrength}%
               </div>
-              <p className="mt-4 text-2xl font-semibold text-[color:var(--text)]">
+              <p className="mt-4 text-2xl font-semibold text-[color:var(--text)] tracking-tight">
                 {form.name || "未设置昵称"}
                 {form.name ? "老师" : ""}
               </p>
-              <p className="mt-1 text-sm text-[color:var(--muted)]">
+              <p className="mt-1 text-sm text-[color:var(--muted)] max-w-[200px] leading-relaxed">
                 {form.title || "填写头衔后会展示在 Dashboard 欢迎区"}
               </p>
             </div>
@@ -130,68 +184,6 @@ export default function Profile() {
                 />
               </label>
             </div>
-          </section>
-
-          <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-2xl bg-indigo-500/15 text-indigo-400">
-                <Camera className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-[color:var(--text)]">
-                  头像设置
-                </h3>
-                <p className="text-sm text-[color:var(--muted)]">
-                  支持上传本地图片，也可以直接填写远程地址。
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-dashed border-[color:var(--border)] bg-black/10 p-4">
-              <input
-                id={fileId}
-                type="file"
-                accept="image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    if (typeof reader.result === "string") {
-                      setForm((prev) => ({ ...prev, avatar: reader.result as string }));
-                    }
-                  };
-                  reader.readAsDataURL(file);
-                }}
-                className="hidden"
-              />
-              <div className="flex flex-wrap items-center gap-3">
-                <label
-                  htmlFor={fileId}
-                  className="cursor-pointer rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 text-sm font-medium text-[color:var(--text)] transition hover:border-[color:var(--accent)] hover:bg-white/5"
-                >
-                  选择本地图片
-                </label>
-                <span className="text-xs text-[color:var(--muted)]">
-                  PNG/JPG，建议使用清晰方图，1MB 以内更合适
-                </span>
-              </div>
-            </div>
-
-            <label className="mt-4 block text-sm text-[color:var(--muted)]">
-              头像地址（可选）
-              <div className="relative mt-2">
-                <LinkIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--muted)]" />
-                <input
-                  value={form.avatar}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, avatar: event.target.value }))
-                  }
-                  className="w-full rounded-2xl border border-[color:var(--border)] bg-transparent py-3 pl-11 pr-4 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)] focus:bg-white/5"
-                  placeholder="https://"
-                />
-              </div>
-            </label>
           </section>
         </div>
 

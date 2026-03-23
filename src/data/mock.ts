@@ -164,9 +164,9 @@ export type ProfileInfo = {
 };
 
 export const defaultProfile: ProfileInfo = {
-  name: "Jerry",
-  title: "企业云计算讲师",
+  name: "",
+  title: "",
   avatar:
-    "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=300&auto=format&fit=crop",
-  bio: "常驻多地交付 · 专注云原生与混合云培训",
+    "https://ui-avatars.com/api/?name=User&background=random&color=fff",
+  bio: "",
 };

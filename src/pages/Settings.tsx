@@ -1,14 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+import { ArrowDown, ArrowUp, Download, FileSpreadsheet, FolderOpen, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import SchedulePreviewModal from "../components/delivery/SchedulePreviewModal";
 import {
   CLASS_TYPE_LABELS,
+  createCourseTemplate,
   createSopTemplate,
+  deleteCourseTemplate,
   deleteSopTemplate,
+  listCourseTemplates,
   listSopTemplatesByClassType,
   moveSopTemplate,
+  updateCourseTemplate,
   type ClassType,
+  type CourseTemplateRecord,
   type SopTemplateRecord,
 } from "../db/delivery";
+import {
+  deleteCourseScheduleAssets,
+  exportCourseSchedule,
+  generateNumbersPreview,
+  getManagedSchedulesRoot,
+  inferScheduleFileName,
+  inferScheduleFileType,
+  loadPdfBlobUrl,
+  loadWorkbookPreview,
+  prepareCourseSchedule,
+  type WorkbookPreview,
+} from "../utils/courseSchedule";
 
 const STAGES = [
   { key: "pre", label: "课前" },
@@ -16,32 +35,105 @@ const STAGES = [
   { key: "post", label: "课后" },
 ] as const;
 
+type PreviewState = {
+  course: CourseTemplateRecord;
+  workbook: WorkbookPreview | null;
+  pdfUrl: string | null;
+  error: string | null;
+};
+
+const SCHEDULE_FILE_FILTER = [{ name: "课表文件", extensions: ["xlsx", "xls", "numbers"] }];
+
 export default function Settings() {
   const [classType, setClassType] = useState<ClassType>("centralized");
   const [templates, setTemplates] = useState<SopTemplateRecord[]>([]);
+  const [courseTemplates, setCourseTemplates] = useState<CourseTemplateRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [courseActionMessage, setCourseActionMessage] = useState<string>("");
+  const [managedScheduleRoot, setManagedScheduleRoot] = useState("");
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [newTitles, setNewTitles] = useState<Record<string, string>>({
     pre: "",
     during: "",
     post: "",
   });
+  const [newCourse, setNewCourse] = useState({
+    name: "",
+    level: "L2",
+    days: "",
+    schedulePath: "",
+  });
 
-  const loadTemplates = useCallback(async () => {
+  useEffect(() => {
+    getManagedSchedulesRoot().then(setManagedScheduleRoot).catch((error) => {
+      console.error("Failed to resolve managed schedule root:", error);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewState?.pdfUrl) {
+        URL.revokeObjectURL(previewState.pdfUrl);
+      }
+    };
+  }, [previewState]);
+
+  const clearPreviewState = useCallback(() => {
+    setPreviewState((current) => {
+      if (current?.pdfUrl) {
+        URL.revokeObjectURL(current.pdfUrl);
+      }
+      return null;
+    });
+  }, []);
+
+  const pickScheduleFile = useCallback(async () => {
+    const selected = await openFileDialog({
+      multiple: false,
+      directory: false,
+      fileAccessMode: "copy",
+      filters: SCHEDULE_FILE_FILTER,
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    setNewCourse((prev) => ({ ...prev, schedulePath: selected }));
+    setCourseActionMessage("");
+  }, []);
+
+  const isLegacyCourse = useCallback(
+    (course: CourseTemplateRecord) =>
+      Boolean(course.schedulePath) &&
+      Boolean(managedScheduleRoot) &&
+      !course.schedulePath!.startsWith(managedScheduleRoot),
+    [managedScheduleRoot]
+  );
+
+  const loadTemplates = useCallback(async (showLoading = false) => {
     try {
-      setLoading(true);
-      const rows = await listSopTemplatesByClassType(classType);
-      setTemplates(rows);
+      if (showLoading) {
+        setLoading(true);
+      }
+      const [sopRows, courseRows] = await Promise.all([
+        listSopTemplatesByClassType(classType),
+        listCourseTemplates(),
+      ]);
+      setTemplates(sopRows);
+      setCourseTemplates(courseRows);
     } catch (err) {
-      console.error("Failed to load SOP templates:", err);
+      console.error("Failed to load templates:", err);
       setTemplates([]);
+      setCourseTemplates([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [classType]);
 
   useEffect(() => {
-    loadTemplates();
+    void loadTemplates(true);
   }, [loadTemplates]);
 
   const grouped = useMemo(() => {
@@ -95,6 +187,184 @@ export default function Settings() {
       console.error("Failed to move SOP template:", err);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const applyManagedSchedule = async (courseId: string, sourcePath: string) => {
+    const managed = await prepareCourseSchedule(courseId, sourcePath, false);
+    return {
+      schedulePath: managed.schedulePath,
+      schedulePreviewPath: managed.schedulePreviewPath,
+      scheduleFileName: managed.scheduleFileName,
+      scheduleFileType: managed.scheduleFileType,
+    };
+  };
+
+  const handleAddCourseTemplate = async () => {
+    if (!newCourse.name || !newCourse.days) return;
+
+    const courseId = crypto.randomUUID();
+    try {
+      setBusyId("new-course");
+      setCourseActionMessage("");
+
+      const schedulePatch = newCourse.schedulePath
+        ? await applyManagedSchedule(courseId, newCourse.schedulePath)
+        : {
+            schedulePath: null,
+            schedulePreviewPath: null,
+            scheduleFileName: null,
+            scheduleFileType: null,
+          };
+
+      await createCourseTemplate({
+        id: courseId,
+        name: newCourse.name,
+        level: newCourse.level,
+        days: newCourse.days,
+        ...schedulePatch,
+      });
+      setNewCourse({ name: "", level: "L2", days: "", schedulePath: "" });
+      await loadTemplates();
+      setCourseActionMessage("课程已新增成功");
+    } catch (err) {
+      console.error("Failed to add course template:", err);
+      try {
+        await deleteCourseScheduleAssets(courseId);
+      } catch (cleanupError) {
+        console.error("Failed to clean up schedule assets after add failure:", cleanupError);
+      }
+      setCourseActionMessage(`新增课程失败：${String(err)}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeleteCourseTemplate = async (course: CourseTemplateRecord) => {
+    try {
+      setBusyId(course.id);
+      await deleteCourseScheduleAssets(course.id);
+      await deleteCourseTemplate(course.id);
+      await loadTemplates();
+      setCourseActionMessage(`已删除《${course.name}》`);
+    } catch (err) {
+      console.error("Failed to delete course template:", err);
+      setCourseActionMessage(`删除课程失败：${String(err)}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleReplaceCourseSchedule = async (course: CourseTemplateRecord) => {
+    try {
+      setBusyId(`replace-${course.id}`);
+      setCourseActionMessage("");
+      const selected = await openFileDialog({
+        multiple: false,
+        directory: false,
+        fileAccessMode: "copy",
+        filters: SCHEDULE_FILE_FILTER,
+      });
+      if (!selected || Array.isArray(selected)) return;
+
+      const schedulePatch = await applyManagedSchedule(course.id, selected);
+      await updateCourseTemplate(course.id, schedulePatch);
+      await loadTemplates();
+      setCourseActionMessage(`已更新《${course.name}》的课表`);
+    } catch (error) {
+      console.error("Failed to replace course schedule:", error);
+      setCourseActionMessage(`重新上传课表失败：${String(error)}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleMigrateLegacySchedule = async (course: CourseTemplateRecord) => {
+    if (!course.schedulePath) return;
+    try {
+      setBusyId(`migrate-${course.id}`);
+      setCourseActionMessage("");
+      const schedulePatch = await applyManagedSchedule(course.id, course.schedulePath);
+      await updateCourseTemplate(course.id, schedulePatch);
+      await loadTemplates();
+      setCourseActionMessage(`已迁移《${course.name}》的旧课表`);
+    } catch (error) {
+      console.error("Failed to migrate course schedule:", error);
+      setCourseActionMessage(`迁移旧课表失败：${String(error)}。请重新上传课表`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDownloadScheduleFile = async (course: CourseTemplateRecord) => {
+    if (!course.schedulePath) return;
+
+    try {
+      const targetPath = await saveFileDialog({
+        title: "导出课表副本",
+        defaultPath: inferScheduleFileName(course),
+        filters: SCHEDULE_FILE_FILTER,
+      });
+      if (!targetPath) return;
+
+      await exportCourseSchedule(course.schedulePath, targetPath);
+      setCourseActionMessage(`课表已导出到：${targetPath}`);
+    } catch (error) {
+      console.error("Failed to export schedule file:", error);
+      setCourseActionMessage(`下载课表失败：${String(error)}`);
+    }
+  };
+
+  const handleViewCourseSchedule = async (course: CourseTemplateRecord) => {
+    if (!course.schedulePath) return;
+    if (isLegacyCourse(course)) {
+      setCourseActionMessage("旧课表需要先迁移或重新上传，才能在应用内预览");
+      return;
+    }
+
+    const fileType = inferScheduleFileType(course);
+    if (!fileType) {
+      setCourseActionMessage("无法识别课表文件类型，请重新上传");
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+      setCourseActionMessage("");
+      clearPreviewState();
+
+      if (fileType === "numbers") {
+        const previewPath = course.schedulePreviewPath || await generateNumbersPreview(course.id);
+        if (!course.schedulePreviewPath) {
+          await updateCourseTemplate(course.id, { schedulePreviewPath: previewPath });
+          await loadTemplates();
+        }
+        const pdfUrl = await loadPdfBlobUrl(previewPath);
+        setPreviewState({
+          course,
+          workbook: null,
+          pdfUrl,
+          error: null,
+        });
+      } else {
+        const workbook = await loadWorkbookPreview(course.schedulePath);
+        setPreviewState({
+          course,
+          workbook,
+          pdfUrl: null,
+          error: null,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to preview schedule:", error);
+      setPreviewState({
+        course,
+        workbook: null,
+        pdfUrl: null,
+        error: `课表预览失败：${String(error)}`,
+      });
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -204,6 +474,240 @@ export default function Settings() {
           </div>
         )}
       </section>
+
+      <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+        <header className="mb-6">
+          <h2 className="text-lg font-semibold text-[color:var(--text)]">课程库管理</h2>
+          <p className="mt-1 text-sm text-[color:var(--muted)]">维护常用课程的标准名称、级别和时长</p>
+          {courseActionMessage ? (
+            <p className="mt-3 text-xs text-[color:var(--text)]">{courseActionMessage}</p>
+          ) : null}
+        </header>
+
+        <div className="space-y-4">
+          <div className="grid gap-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5 lg:grid-cols-[1fr_120px_100px_240px_100px]">
+            <div className="space-y-1">
+              <label className="text-xs text-[color:var(--muted)]">课程名称</label>
+              <input
+                value={newCourse.name}
+                onChange={(e) => setNewCourse((p) => ({ ...p, name: e.target.value }))}
+                placeholder="如：云原生架构实训"
+                className="w-full rounded-xl border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-[color:var(--muted)]">级别</label>
+              <select
+                value={newCourse.level}
+                onChange={(e) => setNewCourse((p) => ({ ...p, level: e.target.value }))}
+                className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+              >
+                <option value="L2">L2</option>
+                <option value="L3">L3</option>
+                <option value="L4">L4</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-[color:var(--muted)]">天数</label>
+              <input
+                value={newCourse.days}
+                onChange={(e) => setNewCourse((p) => ({ ...p, days: e.target.value }))}
+                placeholder="5"
+                className="w-full rounded-xl border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-[color:var(--accent)]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-[color:var(--muted)]">课表附件（可选）</label>
+              <div className="rounded-xl border border-[color:var(--border)] bg-transparent px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm text-[color:var(--text)]">
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                      <span className="truncate">
+                        {newCourse.schedulePath
+                          ? newCourse.schedulePath.split(/[\\/]/).pop()
+                          : "未选择课表"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void pickScheduleFile()}
+                      className="rounded-lg p-1.5 text-[color:var(--muted)] transition hover:bg-white/[0.04] hover:text-[color:var(--text)]"
+                      title="选择课表文件"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                    </button>
+                    {newCourse.schedulePath ? (
+                      <button
+                        type="button"
+                        onClick={() => setNewCourse((prev) => ({ ...prev, schedulePath: "" }))}
+                        className="rounded-lg p-1.5 text-[color:var(--muted)] transition hover:bg-white/[0.04] hover:text-rose-300"
+                        title="移除附件"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-[color:var(--muted)]">
+                  上传后会托管到应用数据目录，支持 Excel 和 Numbers 的稳定预览与下载。
+                </p>
+              </div>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => void handleAddCourseTemplate()}
+                disabled={busyId === "new-course" || !newCourse.name || !newCourse.days}
+                className="flex h-10 w-full items-center justify-center gap-1 rounded-xl bg-[color:var(--accent)] text-xs font-semibold text-white transition hover:bg-[color:var(--accent)]/90 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                新增
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)]">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead className="bg-[color:var(--panel-strong)] text-[color:var(--muted)]">
+                <tr>
+                  <th className="px-5 py-3 font-medium">课程名称</th>
+                  <th className="px-5 py-3 font-medium">级别</th>
+                  <th className="px-5 py-3 font-medium">时长</th>
+                  <th className="px-5 py-3 font-medium">课表</th>
+                  <th className="px-5 py-3 font-medium text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[color:var(--border)]">
+                {courseTemplates.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-[color:var(--muted)]">
+                      尚未配置课程模板
+                    </td>
+                  </tr>
+                ) : (
+                  courseTemplates.map((tpl) => {
+                    const legacy = isLegacyCourse(tpl);
+                    const fileType = inferScheduleFileType(tpl);
+                    const fileName = inferScheduleFileName(tpl);
+                    return (
+                      <tr key={tpl.id} className="group hover:bg-white/[0.02]">
+                        <td className="px-5 py-3 text-[color:var(--text)] font-medium">{tpl.name}</td>
+                        <td className="px-5 py-3">
+                          <span className="inline-block rounded-full border border-sky-300/35 bg-sky-300/28 px-2.5 py-0.5 text-[10px] font-semibold text-sky-950">
+                            {tpl.level}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-[color:var(--muted)]">{tpl.days} 天</td>
+                        <td className="px-5 py-3 text-[color:var(--muted)]">
+                          {tpl.schedulePath ? (
+                            <div className="space-y-2">
+                              <div className="truncate text-xs text-[color:var(--text)]">{fileName}</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {legacy ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleMigrateLegacySchedule(tpl)}
+                                      disabled={busyId === `migrate-${tpl.id}`}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)] disabled:opacity-50"
+                                    >
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                      迁移课表
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleReplaceCourseSchedule(tpl)}
+                                      disabled={busyId === `replace-${tpl.id}`}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)] disabled:opacity-50"
+                                    >
+                                      <FolderOpen className="h-3.5 w-3.5" />
+                                      重新上传
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleViewCourseSchedule(tpl)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)]"
+                                    >
+                                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                                      查看
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDownloadScheduleFile(tpl)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)]"
+                                    >
+                                      <Download className="h-3.5 w-3.5" />
+                                      下载
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleReplaceCourseSchedule(tpl)}
+                                      disabled={busyId === `replace-${tpl.id}`}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)] disabled:opacity-50"
+                                    >
+                                      <FolderOpen className="h-3.5 w-3.5" />
+                                      重新上传
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-[color:var(--muted)]">
+                                {legacy
+                                  ? "旧版课表记录，请先迁移后再预览。"
+                                  : fileType === "numbers"
+                                    ? "应用内将展示 PDF 预览。"
+                                    : "应用内将展示 Excel 工作表预览。"}
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleReplaceCourseSchedule(tpl)}
+                              disabled={busyId === `replace-${tpl.id}`}
+                              className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border)] px-2.5 py-1 text-xs transition hover:text-[color:var(--text)] disabled:opacity-50"
+                            >
+                              <FolderOpen className="h-3.5 w-3.5" />
+                              上传课表
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <button
+                            onClick={() => void handleDeleteCourseTemplate(tpl)}
+                            disabled={busyId === tpl.id}
+                            className="rounded-lg p-2 text-rose-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-400/10 disabled:opacity-40"
+                            title="删除模板"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <SchedulePreviewModal
+        open={Boolean(previewState)}
+        title={previewState?.course.name ?? "课表预览"}
+        fileName={previewState ? inferScheduleFileName(previewState.course) : ""}
+        fileTypeLabel={previewState ? (inferScheduleFileType(previewState.course) ?? "未知类型").toUpperCase() : ""}
+        workbook={previewState?.workbook ?? null}
+        pdfUrl={previewState?.pdfUrl ?? null}
+        error={previewState?.error ?? null}
+        loading={previewLoading}
+        onClose={clearPreviewState}
+        onDownload={() => (previewState ? handleDownloadScheduleFile(previewState.course) : undefined)}
+      />
     </div>
   );
 }

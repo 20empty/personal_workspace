@@ -24,8 +24,8 @@ fn detect_schedule_file_type(path: &Path) -> Result<String, String> {
     .ok_or_else(|| "无法识别课表文件类型".to_string())?;
 
   match extension.as_str() {
-    "xlsx" | "xls" | "numbers" => Ok(extension),
-    _ => Err("仅支持 .xlsx、.xls 或 .numbers 课表文件".to_string()),
+    "xlsx" | "xls" | "numbers" | "pdf" | "png" | "jpg" | "jpeg" | "webp" | "gif" => Ok(extension),
+    _ => Err("仅支持 .xlsx、.xls、.numbers、.pdf 或图片文件".to_string()),
   }
 }
 

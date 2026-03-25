@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { ArrowDown, ArrowUp, Download, FileSpreadsheet, FolderOpen, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FileSpreadsheet, FolderOpen, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import SchedulePreviewModal from "../components/delivery/SchedulePreviewModal";
 import {
   CLASS_TYPE_LABELS,
@@ -23,11 +23,9 @@ import {
   getManagedSchedulesRoot,
   inferScheduleFileName,
   inferScheduleFileType,
-  loadPdfBlobUrl,
-  loadWorkbookPreview,
   prepareCourseSchedule,
-  type WorkbookPreview,
 } from "../utils/courseSchedule";
+import { loadPreview, type PreviewContent, type ScheduleFileType } from "../utils/previewEngine";
 
 const STAGES = [
   { key: "pre", label: "课前" },
@@ -37,12 +35,11 @@ const STAGES = [
 
 type PreviewState = {
   course: CourseTemplateRecord;
-  workbook: WorkbookPreview | null;
-  pdfUrl: string | null;
-  error: string | null;
+  previewContent: PreviewContent | null;
+  fileType: ScheduleFileType | null;
 };
 
-const SCHEDULE_FILE_FILTER = [{ name: "课表文件", extensions: ["xlsx", "xls", "numbers"] }];
+const SCHEDULE_FILE_FILTER = [{ name: "课表文件", extensions: ["xlsx", "xls", "numbers", "pdf", "png", "jpg", "jpeg", "webp", "gif"] }];
 
 export default function Settings() {
   const [classType, setClassType] = useState<ClassType>("centralized");
@@ -52,6 +49,7 @@ export default function Settings() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [courseActionMessage, setCourseActionMessage] = useState<string>("");
   const [managedScheduleRoot, setManagedScheduleRoot] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [newTitles, setNewTitles] = useState<Record<string, string>>({
@@ -74,16 +72,16 @@ export default function Settings() {
 
   useEffect(() => {
     return () => {
-      if (previewState?.pdfUrl) {
-        URL.revokeObjectURL(previewState.pdfUrl);
+      if (previewState?.previewContent?.type === "pdf" || previewState?.previewContent?.type === "image") {
+        URL.revokeObjectURL(previewState.previewContent.url);
       }
     };
   }, [previewState]);
 
   const clearPreviewState = useCallback(() => {
     setPreviewState((current) => {
-      if (current?.pdfUrl) {
-        URL.revokeObjectURL(current.pdfUrl);
+      if (current?.previewContent?.type === "pdf" || current?.previewContent?.type === "image") {
+        URL.revokeObjectURL(current.previewContent.url);
       }
       return null;
     });
@@ -255,6 +253,21 @@ export default function Settings() {
     }
   };
 
+  const handleEditCourseTemplate = async (id: string, name: string, level: string, days: string) => {
+    try {
+      setBusyId(id);
+      await updateCourseTemplate(id, { name, level, days });
+      await loadTemplates();
+      setEditingTemplateId(null);
+      setCourseActionMessage("已更新课程模板");
+    } catch (err) {
+      console.error("Failed to edit course template:", err);
+      setCourseActionMessage(`更新课程失败：${String(err)}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleReplaceCourseSchedule = async (course: CourseTemplateRecord) => {
     try {
       setBusyId(`replace-${course.id}`);
@@ -333,35 +346,26 @@ export default function Settings() {
       setCourseActionMessage("");
       clearPreviewState();
 
-      if (fileType === "numbers") {
-        const previewPath = course.schedulePreviewPath || await generateNumbersPreview(course.id);
-        if (!course.schedulePreviewPath) {
-          await updateCourseTemplate(course.id, { schedulePreviewPath: previewPath });
-          await loadTemplates();
-        }
-        const pdfUrl = await loadPdfBlobUrl(previewPath);
-        setPreviewState({
-          course,
-          workbook: null,
-          pdfUrl,
-          error: null,
-        });
-      } else {
-        const workbook = await loadWorkbookPreview(course.schedulePath);
-        setPreviewState({
-          course,
-          workbook,
-          pdfUrl: null,
-          error: null,
-        });
+      // Numbers 需要特殊处理：先生成预览 PDF
+      let previewPath = course.schedulePreviewPath;
+      if (fileType === "numbers" && !previewPath) {
+        previewPath = await generateNumbersPreview(course.id);
+        await updateCourseTemplate(course.id, { schedulePreviewPath: previewPath });
+        await loadTemplates();
       }
+
+      const previewContent = await loadPreview(course.schedulePath, fileType, previewPath);
+      setPreviewState({
+        course,
+        previewContent,
+        fileType,
+      });
     } catch (error) {
       console.error("Failed to preview schedule:", error);
       setPreviewState({
         course,
-        workbook: null,
-        pdfUrl: null,
-        error: `课表预览失败：${String(error)}`,
+        previewContent: { type: "error", message: `课表预览失败：${String(error)}` },
+        fileType,
       });
     } finally {
       setPreviewLoading(false);
@@ -591,16 +595,76 @@ export default function Settings() {
                     const legacy = isLegacyCourse(tpl);
                     const fileType = inferScheduleFileType(tpl);
                     const fileName = inferScheduleFileName(tpl);
+                    const isEditing = editingTemplateId === tpl.id;
                     return (
                       <tr key={tpl.id} className="group hover:bg-white/[0.02]">
-                        <td className="px-5 py-3 text-[color:var(--text)] font-medium">{tpl.name}</td>
-                        <td className="px-5 py-3">
-                          <span className="inline-block rounded-full border border-sky-300/35 bg-sky-300/28 px-2.5 py-0.5 text-[10px] font-semibold text-sky-950">
-                            {tpl.level}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-[color:var(--muted)]">{tpl.days} 天</td>
-                        <td className="px-5 py-3 text-[color:var(--muted)]">
+                        {isEditing ? (
+                          /* 编辑模式：内联表单 */
+                          <>
+                            <td className="px-5 py-3">
+                              <input
+                                type="text"
+                                defaultValue={tpl.name}
+                                id={`edit-name-${tpl.id}`}
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                              />
+                            </td>
+                            <td className="px-5 py-3">
+                              <select
+                                defaultValue={tpl.level}
+                                id={`edit-level-${tpl.id}`}
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                              >
+                                <option value="L2">L2</option>
+                                <option value="L3">L3</option>
+                                <option value="L4">L4</option>
+                              </select>
+                            </td>
+                            <td className="px-5 py-3">
+                              <input
+                                type="text"
+                                defaultValue={tpl.days}
+                                id={`edit-days-${tpl.id}`}
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                              />
+                            </td>
+                            <td className="px-5 py-3 text-[color:var(--muted)]">-</td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => setEditingTemplateId(null)}
+                                  className="rounded-lg p-2 text-[color:var(--muted)] transition hover:text-[color:var(--text)]"
+                                  title="取消"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const name = (document.getElementById(`edit-name-${tpl.id}`) as HTMLInputElement).value;
+                                    const level = (document.getElementById(`edit-level-${tpl.id}`) as HTMLSelectElement).value;
+                                    const days = (document.getElementById(`edit-days-${tpl.id}`) as HTMLInputElement).value;
+                                    void handleEditCourseTemplate(tpl.id, name, level, days);
+                                  }}
+                                  disabled={busyId === tpl.id}
+                                  className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                  title="保存"
+                                >
+                                  保存
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          /* 正常显示模式 */
+                          <>
+                            <td className="px-5 py-3 text-[color:var(--text)] font-medium">{tpl.name}</td>
+                            <td className="px-5 py-3">
+                              <span className="inline-block rounded-full border border-sky-300/35 bg-sky-300/28 px-2.5 py-0.5 text-[10px] font-semibold text-sky-950">
+                                {tpl.level}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-[color:var(--muted)]">{tpl.days} 天</td>
+                            <td className="px-5 py-3 text-[color:var(--muted)]">
                           {tpl.schedulePath ? (
                             <div className="space-y-2">
                               <div className="truncate text-xs text-[color:var(--text)]">{fileName}</div>
@@ -677,15 +741,26 @@ export default function Settings() {
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => void handleDeleteCourseTemplate(tpl)}
-                            disabled={busyId === tpl.id}
-                            className="rounded-lg p-2 text-rose-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-400/10 disabled:opacity-40"
-                            title="删除模板"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditingTemplateId(tpl.id)}
+                              className="rounded-lg p-2 text-[color:var(--muted)] opacity-0 transition group-hover:opacity-100 hover:text-sky-400 hover:bg-sky-500/10"
+                              title="编辑模板"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => void handleDeleteCourseTemplate(tpl)}
+                              disabled={busyId === tpl.id}
+                              className="rounded-lg p-2 text-rose-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-400/10 disabled:opacity-40"
+                              title="删除模板"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
+                          </>
+                        )}
                       </tr>
                     );
                   })
@@ -700,10 +775,8 @@ export default function Settings() {
         open={Boolean(previewState)}
         title={previewState?.course.name ?? "课表预览"}
         fileName={previewState ? inferScheduleFileName(previewState.course) : ""}
-        fileTypeLabel={previewState ? (inferScheduleFileType(previewState.course) ?? "未知类型").toUpperCase() : ""}
-        workbook={previewState?.workbook ?? null}
-        pdfUrl={previewState?.pdfUrl ?? null}
-        error={previewState?.error ?? null}
+        fileType={previewState?.fileType ?? null}
+        previewContent={previewState?.previewContent ?? null}
         loading={previewLoading}
         onClose={clearPreviewState}
         onDownload={() => (previewState ? handleDownloadScheduleFile(previewState.course) : undefined)}

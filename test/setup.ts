@@ -60,6 +60,11 @@ Object.defineProperty(window, "ResizeObserver", {
   value: MockResizeObserver,
 });
 
+Object.defineProperty(window, "scrollTo", {
+  writable: true,
+  value: vi.fn(),
+});
+
 // 清理 after each test
 afterEach(() => {
   cleanup();

@@ -9,7 +9,7 @@ type ScheduleBackedCourse = {
   scheduleFileType: string | null;
 };
 
-export type CourseScheduleFileType = "xlsx" | "xls" | "numbers";
+export type CourseScheduleFileType = "xlsx" | "xls" | "numbers" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "pdf";
 
 export type ManagedCourseSchedule = {
   schedulePath: string;
@@ -30,7 +30,8 @@ export async function getManagedSchedulesRoot(): Promise<string> {
 
 export function inferScheduleFileType(course: ScheduleBackedCourse): CourseScheduleFileType | null {
   const explicitType = course.scheduleFileType?.toLowerCase();
-  if (explicitType === "xlsx" || explicitType === "xls" || explicitType === "numbers") {
+  if (explicitType === "xlsx" || explicitType === "xls" || explicitType === "numbers" || explicitType === "pdf" ||
+      explicitType === "png" || explicitType === "jpg" || explicitType === "jpeg" || explicitType === "webp" || explicitType === "gif") {
     return explicitType;
   }
 
@@ -39,6 +40,11 @@ export function inferScheduleFileType(course: ScheduleBackedCourse): CourseSched
   if (lower.endsWith(".xlsx")) return "xlsx";
   if (lower.endsWith(".xls")) return "xls";
   if (lower.endsWith(".numbers")) return "numbers";
+  if (lower.endsWith(".pdf")) return "pdf";
+  if (lower.endsWith(".png")) return "png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpeg";
+  if (lower.endsWith(".webp")) return "webp";
+  if (lower.endsWith(".gif")) return "gif";
   return null;
 }
 

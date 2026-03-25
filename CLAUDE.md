@@ -12,6 +12,7 @@ Tech stack: Tauri v2, React 18 + Vite, TypeScript, Tailwind CSS, Framer Motion, 
 - **语言偏好**：请始终使用 **中文** 与我交流、解释代码逻辑和输出状态。
 - **回复风格**：简洁、专业，直接给出解决方案。
 - **注释要求**：代码中的新增注释请使用中文。
+- **Agent Team**：可以使用 `/agents` 命令启动多个并行的 subagent 完成复杂任务。
 
 ## Commands
 
@@ -64,6 +65,32 @@ npx vitest run test/components/CourseList.test.tsx  # Run single test file
 - `@tauri-apps/plugin-shell` — shell commands
 - `@tauri-apps/plugin-opener` — open URLs externally
 
+### 预览功能架构
+
+课表预览功能支持多种文件格式的统一预览：
+
+| 格式 | 方案 | 说明 |
+|------|------|------|
+| Excel (.xlsx/.xls) | exceljs | 带样式渲染 |
+| PDF | pdfjs-dist | 分页、缩放 |
+| Numbers | macOS 转换 PDF | 系统限制 |
+| 图片 (.png/.jpg/.webp) | 原生 img | 缩放预览 |
+
+**关键文件：**
+- `src/utils/previewEngine.ts` — 统一预览引擎，文件类型检测和路由
+- `src/components/preview/ExcelRenderer.tsx` — Excel 带样式表格渲染
+- `src/components/preview/PdfRenderer.tsx` — PDF.js 渲染组件
+- `src/components/preview/ImageRenderer.tsx` — 图片预览组件
+- `src/components/delivery/SchedulePreviewModal.tsx` — 预览弹窗（主容器）
+
 ## Testing
 
 Tests live in `test/` matching the src structure. Vitest runs with jsdom. The test setup (`test/setup.ts`) mocks Tauri SQL plugin, `crypto.randomUUID`, `IntersectionObserver`, `ResizeObserver`, and `matchMedia`. Test factories and fixtures are in `test/factories/` and `test/fixtures/`.
+
+## 关键依赖
+
+- **pdfjs-dist** — PDF 渲染
+- **exceljs** — Excel 文件读取（支持样式）
+- **xlsx** — Excel 文件基础读取（备选）
+- **framer-motion** — 动画效果
+- **@tauri-apps/plugin-*** — Tauri 插件系列

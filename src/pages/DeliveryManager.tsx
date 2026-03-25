@@ -15,16 +15,19 @@ import {
 } from "lucide-react";
 import {
   createDeliveryClass,
+  completeAllSopTasksByClassId,
   deleteDeliveryClass,
   listDeliveryClasses,
   updateDeliveryClass,
   getCoursesByClassId,
+  createDeliveryCourse,
   type DeliveryClassRecord,
   type CourseRecord,
+  type CreatePayload,
 } from "../db/delivery";
 
 import DeleteConfirmModal from "../components/delivery/DeleteConfirmModal";
-import CreateClassModal, { type CreatePayload } from "../components/delivery/CreateClassModal";
+import CreateClassModal from "../components/delivery/CreateClassModal";
 
 export type ViewClass = Pick<
   DeliveryClassRecord,
@@ -192,9 +195,40 @@ export default function DeliveryManager() {
     };
   }, [activeClassIds]);
 
-  const handleClassCreated = async (payload: CreatePayload) => {
+  const handleClassCreated = async (
+    payload: CreatePayload,
+    options?: { completeSop?: boolean }
+  ) => {
     try {
-      await createDeliveryClass(payload);
+      // 提取课程信息（如果有）
+      const { courses: selectedCourses, ...classPayload } = payload;
+      const classId = await createDeliveryClass(classPayload as Omit<CreatePayload, "courses">);
+
+      // 创建选定的课程
+      if (selectedCourses && selectedCourses.length > 0) {
+        await Promise.all(
+          selectedCourses.map((course, idx) =>
+            createDeliveryCourse({
+              classId,
+              courseTemplateId: course.templateId || null,
+              name: course.name,
+              level: course.level,
+              days: String(course.days),
+              startDate: course.startDate,
+              endDate: course.endDate,
+              orderIndex: idx,
+              schedulePath: null,
+              schedulePreviewPath: null,
+              scheduleFileName: null,
+              scheduleFileType: null,
+            })
+          )
+        );
+      }
+
+      if (options?.completeSop) {
+        await completeAllSopTasksByClassId(classId);
+      }
       const rows = await loadClasses();
       setClasses(rows);
     } catch (err) {
@@ -320,8 +354,8 @@ export default function DeliveryManager() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                            {activeClass.code}
+                          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text)]/78">
+                            <span className="break-all">{activeClass.code}</span>
                           </p>
                           <h3 
                             className="mt-2 line-clamp-2 text-2xl font-semibold leading-tight text-[color:var(--text)]"
@@ -386,27 +420,38 @@ export default function DeliveryManager() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-                      <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                        当前交付课程
-                      </p>
+                    <div className="rounded-[24px] border border-sky-400/20 bg-gradient-to-br from-sky-500/10 via-cyan-500/8 to-transparent p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.3em] text-sky-100/75">
+                          当前交付课程
+                        </p>
+                        <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.22em] text-sky-100/70">
+                          Review
+                        </span>
+                      </div>
                       {activeCourseMap[activeClass.id] ? (
-                        <div className="mt-3 space-y-2">
+                        <div className="mt-4 space-y-3">
                           <p className="text-base font-semibold text-[color:var(--text)]">
                             {activeCourseMap[activeClass.id]?.name}
                           </p>
-                          <div className="flex items-center gap-2 text-xs text-[color:var(--muted)]">
-                            <CalendarClock className="h-3.5 w-3.5" />
-                            {activeCourseMap[activeClass.id]?.startDate.replace(/-/g, ".")}
-                            {" - "}
-                            {activeCourseMap[activeClass.id]?.endDate.replace(/-/g, ".")}
+                          <div className="grid gap-2 text-xs text-[color:var(--text)]/70">
+                            <div className="flex items-center gap-2">
+                              <CalendarClock className="h-3.5 w-3.5 text-sky-300" />
+                              {activeCourseMap[activeClass.id]?.startDate.replace(/-/g, ".")}
+                              {" - "}
+                              {activeCourseMap[activeClass.id]?.endDate.replace(/-/g, ".")}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Users className="h-3.5 w-3.5 text-sky-300" />
+                              当前排期 {activeCourseMap[activeClass.id]?.days} 天
+                            </div>
                           </div>
-                          <div className="inline-flex rounded-md bg-[color:var(--border)] px-2 py-1 text-xs text-[color:var(--muted)]">
-                            {activeCourseMap[activeClass.id]?.days}天
+                          <div className="rounded-2xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-[color:var(--text)]/65">
+                            当前展示的是进行中班级最相关的一门课程，方便快速审阅时间范围与课表资料。
                           </div>
                         </div>
                       ) : (
-                        <p className="mt-3 text-sm text-[color:var(--muted)]">
+                        <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-sm text-[color:var(--muted)]">
                           暂无课程安排
                         </p>
                       )}
@@ -461,8 +506,8 @@ export default function DeliveryManager() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                          {item.code}
+                        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text)]/76">
+                          <span className="break-all">{item.code}</span>
                         </p>
                         <h2 className="mt-2 text-base font-semibold text-[color:var(--text)]">
                           {item.title}
@@ -531,8 +576,8 @@ export default function DeliveryManager() {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-                        {item.code}
+                      <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text)]/76">
+                        <span className="break-all">{item.code}</span>
                       </p>
                       <p className="mt-2 text-base font-semibold text-[color:var(--text)]">
                         {item.title}

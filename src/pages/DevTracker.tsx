@@ -1,14 +1,31 @@
 import React, { useState } from "react";
+import { useLocation } from "react-router-dom";
 import Dashboard from "../components/devtracker/Dashboard";
 import ProjectList from "../components/devtracker/ProjectList";
 import KanbanBoard from "../components/devtracker/KanbanBoard";
 import { LayoutDashboard, FileArchive, LayoutTemplate } from "lucide-react";
 
 type TabType = "dashboard" | "projects" | "kanban";
+type DevTrackerLocationState = {
+  activeTab?: TabType;
+  selectedProjectId?: string;
+} | null;
 
 export default function DevTracker() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+
+  React.useEffect(() => {
+    const state = location.state as DevTrackerLocationState;
+    if (!state) return;
+    if (state.selectedProjectId) {
+      setSelectedProjectId(state.selectedProjectId);
+    }
+    if (state.activeTab) {
+      setActiveTab(state.activeTab);
+    }
+  }, [location.state]);
 
   return (
     <div className="flex h-full flex-col">

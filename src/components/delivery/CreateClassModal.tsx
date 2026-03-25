@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Search } from "lucide-react";
-import { CLASS_TYPE_LABELS, type ClassType, type DeliveryClassRecord } from "../../db/delivery";
+import { X, Search, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { CLASS_TYPE_LABELS, type ClassType, listCourseTemplates, type CourseTemplateRecord, type CreatePayload, type SelectedCourse } from "../../db/delivery";
 
 const GLOBAL_CITIES = [
     // --- 中国 一级与新一线、二线核心城市 ---
@@ -57,9 +57,9 @@ const GLOBAL_CITIES = [
     "加拿大-多伦多", "加拿大-温哥华",
     "印度-孟买", "印度-新德里", "印度-班加罗尔",
     "巴西-圣保罗", "巴西-里约热内卢", "墨西哥-墨西哥城", "阿根廷-布宜诺斯艾利斯",
+    "培训中心",
 ];
 
-export type CreatePayload = Omit<DeliveryClassRecord, "id" | "createdAt" | "updatedAt">;
 type ClassFormState = {
     title: string;
     code: string;
@@ -94,7 +94,7 @@ interface CreateClassModalProps {
     mode?: "create" | "edit";
     initialValues?: Partial<CreatePayload>;
     onClose: () => void;
-    onSubmit: (payload: CreatePayload) => Promise<void>;
+    onSubmit: (payload: CreatePayload, options?: { completeSop?: boolean }) => Promise<void>;
 }
 
 export default function CreateClassModal({
@@ -116,6 +116,102 @@ export default function CreateClassModal({
     const [pendingPayload, setPendingPayload] = useState<CreatePayload | null>(null);
     const [showAutoCalcHint, setShowAutoCalcHint] = useState(false);
     const hintTimeoutRef = useState<{ timer: any | null }>({ timer: null })[0];
+
+    // 课程选择相关 state
+    const [templates, setTemplates] = useState<CourseTemplateRecord[]>([]);
+    const [selectedCourses, setSelectedCourses] = useState<SelectedCourse[]>([]);
+    const [showCourseSelector, setShowCourseSelector] = useState(false);
+
+    // 加载课程模板
+    useEffect(() => {
+        if (mode !== "create") return;
+        listCourseTemplates().then(setTemplates).catch(console.error);
+    }, [mode]);
+
+    // 当选择的课程变化时，自动填入 PO 和日期
+    useEffect(() => {
+        if (selectedCourses.length === 0) return;
+        const totalDays = selectedCourses.reduce((sum, c) => sum + c.days, 0);
+        const dates = selectedCourses
+            .filter((c) => c.startDate && c.endDate)
+            .map((c) => ({ start: c.startDate, end: c.endDate }));
+        const earliestStart = dates.length > 0
+            ? dates.reduce((a, b) => (a.start < b.start ? a : b)).start
+            : "";
+        const latestEnd = dates.length > 0
+            ? dates.reduce((a, b) => (a.end > b.end ? a : b)).end
+            : "";
+
+        // 自动分配每门课程的时间（如果有交付周期，且课程尚未分配时间）
+        if (form.startDate && form.endDate && selectedCourses.length > 0) {
+            // 检查是否需要自动分配（只要有一门课程没有时间就重新分配全部）
+            const needsAutoAssign = selectedCourses.some((c) => !c.startDate || !c.endDate);
+            if (needsAutoAssign) {
+                const classStart = new Date(`${form.startDate}T00:00:00`);
+                let currentDate = new Date(classStart);
+
+                const autoAssignedCourses = selectedCourses.map((course) => {
+                    const courseStart = new Date(currentDate);
+                    // 计算该课程的结束日期（按天数推算工作日）
+                    let workDaysUsed = 0;
+                    const courseEnd = new Date(courseStart);
+                    while (workDaysUsed < course.days) {
+                        courseEnd.setDate(courseEnd.getDate() + 1);
+                        const dow = courseEnd.getDay();
+                        if (dow !== 0 && dow !== 6) workDaysUsed++;
+                    }
+                    // 下门课程从第二天开始（如果有的话）
+                    currentDate = new Date(courseEnd);
+                    currentDate.setDate(currentDate.getDate() + 1);
+
+                    return {
+                        ...course,
+                        startDate: courseStart.toISOString().split("T")[0],
+                        endDate: courseEnd.toISOString().split("T")[0],
+                    };
+                });
+                setSelectedCourses(autoAssignedCourses);
+            }
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            teacherPo: String(totalDays),
+            headteacherPo: String(totalDays),
+            startDate: earliestStart || prev.startDate,
+            endDate: latestEnd || prev.endDate,
+        }));
+    }, [selectedCourses]);
+
+    /* 当交付周期变化时，如果课程已选但尚未分配时间，则自动分配 */
+    useEffect(() => {
+        if (!form.startDate || !form.endDate || selectedCourses.length === 0) return;
+        // 检查是否需要自动分配
+        const needsAutoAssign = selectedCourses.some((c) => !c.startDate || !c.endDate);
+        if (!needsAutoAssign) return;
+
+        const classStart = new Date(`${form.startDate}T00:00:00`);
+        let currentDate = new Date(classStart);
+
+        const autoAssignedCourses = selectedCourses.map((course) => {
+            const courseStart = new Date(currentDate);
+            let workDaysUsed = 0;
+            const courseEnd = new Date(courseStart);
+            while (workDaysUsed < course.days) {
+                courseEnd.setDate(courseEnd.getDate() + 1);
+                const dow = courseEnd.getDay();
+                if (dow !== 0 && dow !== 6) workDaysUsed++;
+            }
+            currentDate = new Date(courseEnd);
+            currentDate.setDate(currentDate.getDate() + 1);
+            return {
+                ...course,
+                startDate: courseStart.toISOString().split("T")[0],
+                endDate: courseEnd.toISOString().split("T")[0],
+            };
+        });
+        setSelectedCourses(autoAssignedCourses);
+    }, [form.startDate, form.endDate]);
 
     const filteredCities = useMemo(() => {
         if (!form.location) return GLOBAL_CITIES;
@@ -222,6 +318,7 @@ export default function CreateClassModal({
             focus: form.notes ? [form.notes] : ["待完善"],
             archiveState: "待归档",
             notes: form.notes ? form.notes : null,
+            courses: selectedCourses.length > 0 ? selectedCourses : undefined,
         };
 
         if (isEditMode) {
@@ -242,7 +339,7 @@ export default function CreateClassModal({
             return;
         }
 
-        await onSubmit(payload);
+        await onSubmit(payload, { completeSop: false });
     };
 
     const handleConfirmArchivePrompt = async (archive: boolean) => {
@@ -255,7 +352,7 @@ export default function CreateClassModal({
             finalPayload.archiveState = "已归档";
         }
         setShowArchivePrompt(false);
-        await onSubmit(finalPayload);
+        await onSubmit(finalPayload, { completeSop: archive });
     };
 
     return (
@@ -510,6 +607,111 @@ export default function CreateClassModal({
                             </span>
                         ) : null}
                     </div>
+
+                    {/* 课程选择（仅创建模式） */}
+                    {mode === "create" && (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-[color:var(--muted)]">选择课程（可选）</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCourseSelector(!showCourseSelector)}
+                                    className="flex items-center gap-1 text-xs text-sky-400 transition hover:text-sky-300"
+                                >
+                                    {showCourseSelector ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    {showCourseSelector ? "收起" : "添加课程"}
+                                </button>
+                            </div>
+
+                            {/* 已选课程标签 */}
+                            {selectedCourses.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {selectedCourses.map((course, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs"
+                                        >
+                                            <span className="text-[color:var(--text)]">{course.name}</span>
+                                            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-sky-300">{course.level}</span>
+                                            <span className="text-[color:var(--muted)]">{course.days}天</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedCourses((prev) => prev.filter((_, i) => i !== idx));
+                                                }}
+                                                className="ml-1 text-[color:var(--muted)] hover:text-red-400"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* 课程模板选择器 */}
+                            <AnimatePresence>
+                                {showCourseSelector && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)]"
+                                    >
+                                        <div className="max-h-48 space-y-2 overflow-y-auto p-3">
+                                            {templates.length === 0 ? (
+                                                <p className="py-4 text-center text-xs text-[color:var(--muted)]">暂无可用课程模板</p>
+                                            ) : (
+                                                templates.map((tpl) => (
+                                                    <div
+                                                        key={tpl.id}
+                                                        className="flex cursor-pointer items-center justify-between rounded-xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] px-3 py-2.5 transition hover:border-sky-500/40"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div>
+                                                                <p className="text-sm text-[color:var(--text)]">{tpl.name}</p>
+                                                                <div className="mt-0.5 flex items-center gap-2">
+                                                                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                                        tpl.level === "L4" ? "bg-amber-500/20 text-amber-300" :
+                                                                        tpl.level === "L3" ? "bg-sky-500/20 text-sky-300" :
+                                                                        "bg-emerald-500/20 text-emerald-300"
+                                                                    }`}>
+                                                                        {tpl.level}
+                                                                    </span>
+                                                                    <span className="text-xs text-[color:var(--muted)]">{tpl.days}天</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const exists = selectedCourses.some((c) => c.templateId === tpl.id);
+                                                                if (!exists) {
+                                                                    setSelectedCourses((prev) => [
+                                                                        ...prev,
+                                                                        {
+                                                                            templateId: tpl.id,
+                                                                            name: tpl.name,
+                                                                            level: tpl.level,
+                                                                            days: Number(tpl.days) || 0,
+                                                                            startDate: "",
+                                                                            endDate: "",
+                                                                        },
+                                                                    ]);
+                                                                }
+                                                            }}
+                                                            className="rounded-lg bg-sky-500/20 p-1.5 text-sky-400 transition hover:bg-sky-500/30"
+                                                        >
+                                                            <Plus className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    )}
 
                     <div className="grid gap-4 sm:grid-cols-2">
                         <label className="block text-sm text-[color:var(--muted)]">

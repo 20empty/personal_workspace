@@ -18,6 +18,7 @@ import {
     getCoursesByClassId,
     createDeliveryCourse,
     deleteDeliveryCourse,
+    updateDeliveryCourse,
     CLASS_TYPE_LABELS,
     type DeliveryClassRecord,
     type SopTaskRecord,
@@ -80,6 +81,7 @@ export default function ClassDetail() {
         endDate: "",
         learners: "",
         teacherPo: "",
+        projectSupportPo: "",
         headteacherPo: "",
     });
     const [showAutoArchiveNotice, setShowAutoArchiveNotice] = useState(false);
@@ -179,6 +181,7 @@ export default function ClassDetail() {
             endDate: cls.endDate,
             learners: cls.learners.toString(),
             teacherPo: cls.teacherPo.toString(),
+            projectSupportPo: cls.projectSupportPo.toString(),
             headteacherPo: cls.headteacherPo.toString(),
         });
         setInfoErrors({
@@ -237,6 +240,21 @@ export default function ClassDetail() {
         }
     };
 
+    const handleEditCourse = async (
+        courseId: string,
+        name: string,
+        level: string,
+        days: string,
+        startDate: string,
+        endDate: string
+    ) => {
+        await updateDeliveryCourse(courseId, { name, level, days, startDate, endDate });
+        if (classId) {
+            const updatedCourses = await getCoursesByClassId(classId);
+            setCourses(updatedCourses);
+        }
+    };
+
     const handleSaveNotes = async () => {
         if (!cls) return;
         const normalized = noteDraft.trim() ? noteDraft.trim() : null;
@@ -265,6 +283,7 @@ export default function ClassDetail() {
             endDate: cls.endDate,
             learners: cls.learners.toString(),
             teacherPo: cls.teacherPo.toString(),
+            projectSupportPo: cls.projectSupportPo.toString(),
             headteacherPo: cls.headteacherPo.toString(),
         });
         setInfoErrors({
@@ -303,6 +322,7 @@ export default function ClassDetail() {
             endDate: infoDraft.endDate,
             learners: Number.parseInt(infoDraft.learners || "0", 10) || 0,
             teacherPo: Number.parseFloat(infoDraft.teacherPo || "0") || 0,
+            projectSupportPo: Number.parseFloat(infoDraft.projectSupportPo || "0") || 0,
             headteacherPo: Number.parseFloat(infoDraft.headteacherPo || "0") || 0,
         };
 
@@ -377,7 +397,7 @@ export default function ClassDetail() {
                     返回
                 </button>
                 <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                    <p className="max-w-[min(70vw,32rem)] overflow-hidden rounded-2xl border border-white/10 bg-white/5 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--text)]/78 break-all">
                         {cls.code}
                     </p>
                     <h1 className="mt-1 text-2xl font-semibold text-[color:var(--text)]">
@@ -520,6 +540,15 @@ export default function ClassDetail() {
                                                     onChange={(value) => setInfoDraft((prev) => ({ ...prev, teacherPo: value }))}
                                                 />
                                                 <FormField
+                                                    label="项目支持PO"
+                                                    value={infoDraft.projectSupportPo}
+                                                    onChange={(value) =>
+                                                        setInfoDraft((prev) => ({ ...prev, projectSupportPo: value }))
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <FormField
                                                     label="班主任时长(天)"
                                                     value={infoDraft.headteacherPo}
                                                     onChange={(value) => setInfoDraft((prev) => ({ ...prev, headteacherPo: value }))}
@@ -528,7 +557,11 @@ export default function ClassDetail() {
                                             <div className="rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
                                                 总PO
                                                 <span className="ml-2 text-lg font-semibold">
-                                                    {Number(((Number.parseFloat(infoDraft.teacherPo || "0") || 0) + (Number.parseFloat(infoDraft.headteacherPo || "0") || 0) * 0.1).toFixed(2))}
+                                                    {Number((
+                                                        (Number.parseFloat(infoDraft.teacherPo || "0") || 0) +
+                                                        (Number.parseFloat(infoDraft.projectSupportPo || "0") || 0) +
+                                                        (Number.parseFloat(infoDraft.headteacherPo || "0") || 0) * 0.1
+                                                    ).toFixed(2))}
                                                 </span>
                                             </div>
                                         </div>
@@ -540,7 +573,7 @@ export default function ClassDetail() {
                                 <div className="rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/15 via-cyan-500/10 to-transparent p-5">
                                     <div className="flex flex-wrap items-start justify-between gap-4">
                                         <div>
-                                            <p className="text-xs uppercase tracking-[0.28em] text-sky-200/70">
+                                            <p className="max-w-[min(70vw,32rem)] overflow-hidden rounded-2xl border border-sky-200/15 bg-sky-950/20 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-sky-50/88 break-all">
                                                 {cls.code}
                                             </p>
                                             {cls.contractNo ? (
@@ -572,6 +605,7 @@ export default function ClassDetail() {
                                         icon={<Tag className="h-4 w-4" />}
                                         label="班级编号"
                                         value={cls.code}
+                                        valueClassName="break-all font-mono text-[13px] leading-6"
                                     />
                                     <InfoItem
                                         icon={<Tag className="h-4 w-4" />}
@@ -585,15 +619,16 @@ export default function ClassDetail() {
                                     />
                                     <InfoItem icon={<Users className="h-4 w-4" />} label="学员规模" value={`${cls.learners} 人`} />
                                     <InfoItem icon={<Users className="h-4 w-4" />} label="授课PO" value={`${cls.teacherPo} 个`} />
+                                    <InfoItem icon={<Users className="h-4 w-4" />} label="项目支持PO" value={`${cls.projectSupportPo} 个`} />
                                     <InfoItem icon={<CalendarClock className="h-4 w-4" />} label="班主任时长" value={`${cls.headteacherPo} 天`} />
                                 </div>
                                 <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 px-4 py-3 text-sm text-[color:var(--muted)]">
                                     总PO：
                                     <span className="ml-2 font-semibold text-[color:var(--text)]">
-                                        {Number((cls.teacherPo + cls.headteacherPo * 0.1).toFixed(2))}
+                                        {Number((cls.teacherPo + cls.projectSupportPo + cls.headteacherPo * 0.1).toFixed(2))}
                                     </span>
                                     <span className="ml-2 text-xs">
-                                        授课 {cls.teacherPo} 个 / 班主任 {cls.headteacherPo} 天
+                                        授课 {cls.teacherPo} 个 / 项目支持 {cls.projectSupportPo} 个 / 班主任 {cls.headteacherPo} 天
                                     </span>
                                 </div>
                             </div>
@@ -635,6 +670,7 @@ export default function ClassDetail() {
                         courses={courses}
                         onAdd={handleAddCourse}
                         onDelete={handleDeleteCourse}
+                        onEdit={handleEditCourse}
                     />
 
                     {/* Quick Reflection Notes */}
@@ -692,10 +728,12 @@ function InfoItem({
     icon,
     label,
     value,
+    valueClassName,
 }: {
     icon: React.ReactNode;
     label: string;
     value: string;
+    valueClassName?: string;
 }) {
     return (
         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4 shadow-sm shadow-black/5">
@@ -703,7 +741,7 @@ function InfoItem({
                 <span className="mt-0.5 shrink-0 text-[color:var(--muted)]">{icon}</span>
                 <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{label}</p>
-                    <p className="mt-2 text-[15px] font-medium text-[color:var(--text)]">{value}</p>
+                    <p className={`mt-2 text-[15px] font-medium text-[color:var(--text)] ${valueClassName ?? ""}`.trim()}>{value}</p>
                 </div>
             </div>
         </div>

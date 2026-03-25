@@ -61,8 +61,9 @@ export default function Profile() {
                   reader.onload = () => {
                     if (typeof reader.result === "string") {
                       const base64 = reader.result;
-                      setForm((prev) => ({ ...prev, avatar: base64 }));
-                      updateProfile({ ...form, avatar: base64 });
+                      const newForm = { ...form, avatar: base64 };
+                      setForm(newForm);
+                      updateProfile(newForm);
                     }
                   };
                   reader.readAsDataURL(file);
@@ -89,8 +90,9 @@ export default function Profile() {
                     reader.onload = () => {
                       if (typeof reader.result === "string") {
                         const base64 = reader.result;
-                        setForm((prev) => ({ ...prev, avatar: base64 }));
-                        updateProfile({ ...form, avatar: base64 });
+                        const newForm = { ...form, avatar: base64 };
+                        setForm(newForm);
+                        updateProfile(newForm);
                       }
                     };
                     reader.readAsDataURL(file);

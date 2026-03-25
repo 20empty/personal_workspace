@@ -4,6 +4,20 @@ import { getDb } from "./client";
 
 export type ClassType = "overseas" | "domestic" | "centralized" | "online";
 
+// Re-exported from CreateClassModal for use by DeliveryManager
+export type SelectedCourse = {
+    templateId: string;
+    name: string;
+    level: string;
+    days: number;
+    startDate: string;
+    endDate: string;
+};
+
+export type CreatePayload = Omit<DeliveryClassRecord, "id" | "createdAt" | "updatedAt"> & {
+    courses?: SelectedCourse[];
+};
+
 export const CLASS_TYPE_LABELS: Record<ClassType, string> = {
   overseas: "海外出差培训",
   domestic: "国内出差培训",
@@ -600,6 +614,15 @@ export async function toggleSopTaskStatus(
   );
 }
 
+export async function completeAllSopTasksByClassId(classId: string): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  await db.execute(
+    "UPDATE delivery_sop_tasks SET status = 'completed' WHERE class_id = $1",
+    [classId]
+  );
+}
+
 /**
  * Seed SOP tasks for a class. If tasks already exist for the class, skip.
  */
@@ -787,6 +810,30 @@ export async function getCoursesByClassId(
   return rows.map(mapCourseRow);
 }
 
+export async function listCoursesByClassIds(
+  classIds: string[]
+): Promise<CourseRecord[]> {
+  if (classIds.length === 0) return [];
+  await tablesReady();
+  const db = await getDb();
+  await ensureCourseTemplateSchedulePathColumn(db);
+  const placeholders = classIds.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await db.select<Record<string, unknown>[]>(
+    `SELECT
+       c.*,
+       tpl.schedule_path,
+       tpl.schedule_preview_path,
+       tpl.schedule_file_name,
+       tpl.schedule_file_type
+     FROM delivery_courses c
+     LEFT JOIN delivery_course_templates tpl ON tpl.id = c.course_template_id
+     WHERE c.class_id IN (${placeholders})
+     ORDER BY c.start_date ASC, c.order_index ASC`,
+    classIds
+  );
+  return rows.map(mapCourseRow);
+}
+
 export async function createDeliveryCourse(
   input: Omit<CourseRecord, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
@@ -826,6 +873,41 @@ export async function deleteDeliveryCourse(id: string): Promise<void> {
   await tablesReady();
   const db = await getDb();
   await db.execute("DELETE FROM delivery_courses WHERE id = $1", [id]);
+}
+
+export async function updateDeliveryCourse(
+  id: string,
+  patch: Partial<Omit<CourseRecord, "id" | "createdAt" | "updatedAt">>
+): Promise<void> {
+  await tablesReady();
+  const db = await getDb();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (patch.classId !== undefined) { sets.push(`class_id = $${idx++}`); values.push(patch.classId); }
+  if (patch.courseTemplateId !== undefined) { sets.push(`course_template_id = $${idx++}`); values.push(patch.courseTemplateId); }
+  if (patch.name !== undefined) { sets.push(`name = $${idx++}`); values.push(patch.name); }
+  if (patch.level !== undefined) { sets.push(`level = $${idx++}`); values.push(patch.level); }
+  if (patch.days !== undefined) { sets.push(`days = $${idx++}`); values.push(patch.days); }
+  if (patch.startDate !== undefined) { sets.push(`start_date = $${idx++}`); values.push(patch.startDate); }
+  if (patch.endDate !== undefined) { sets.push(`end_date = $${idx++}`); values.push(patch.endDate); }
+  if (patch.orderIndex !== undefined) { sets.push(`order_index = $${idx++}`); values.push(patch.orderIndex); }
+  if (patch.schedulePath !== undefined) { sets.push(`schedule_path = $${idx++}`); values.push(patch.schedulePath); }
+  if (patch.schedulePreviewPath !== undefined) { sets.push(`schedule_preview_path = $${idx++}`); values.push(patch.schedulePreviewPath); }
+  if (patch.scheduleFileName !== undefined) { sets.push(`schedule_file_name = $${idx++}`); values.push(patch.scheduleFileName); }
+  if (patch.scheduleFileType !== undefined) { sets.push(`schedule_file_type = $${idx++}`); values.push(patch.scheduleFileType); }
+
+  if (sets.length === 0) return;
+
+  sets.push(`updated_at = $${idx++}`);
+  values.push(new Date().toISOString());
+
+  values.push(id);
+  await db.execute(
+    `UPDATE delivery_courses SET ${sets.join(", ")} WHERE id = $${idx}`,
+    values
+  );
 }
 
 /* ───────── CRUD: Course Templates ───────── */

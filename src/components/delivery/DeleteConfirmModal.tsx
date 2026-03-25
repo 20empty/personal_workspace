@@ -9,6 +9,9 @@ interface DeleteConfirmModalProps {
 }
 
 export default function DeleteConfirmModal({ toDelete, onClose, onConfirm }: DeleteConfirmModalProps) {
+    const stageLabel =
+        toDelete.stage === "active" ? "进行中班级" : toDelete.stage === "completed" ? "已交付班级" : "后续档期班级";
+
     return (
         <motion.div
             className="fixed inset-0 z-40 grid place-items-center bg-black/40 backdrop-blur-sm"
@@ -43,7 +46,7 @@ export default function DeleteConfirmModal({ toDelete, onClose, onConfirm }: Del
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 text-sm text-[color:var(--muted)]">
-                    将删除后续档期班级：<span className="text-[color:var(--text)]">{toDelete.title}</span>
+                    将删除{stageLabel}：<span className="text-[color:var(--text)]">{toDelete.title}</span>
                 </div>
 
                 <div className="mt-6 flex items-center justify-end gap-3">

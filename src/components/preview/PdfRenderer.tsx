@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+// @ts-ignore - worker 文件类型问题
+import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-// 设置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// 设置 PDF.js worker - 使用本地 worker 避免 CDN 依赖
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 interface PdfRendererProps {
   url: string;

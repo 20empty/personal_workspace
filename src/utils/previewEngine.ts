@@ -47,8 +47,8 @@ export type ExcelWorkbook = {
 // 预览内容类型
 export type PreviewContent =
   | { type: "excel"; workbook: ExcelWorkbook }
-  | { type: "pdf"; url: string }
-  | { type: "image"; url: string }
+  | { type: "pdf"; url: string; cleanup?: () => void }
+  | { type: "image"; url: string; cleanup?: () => void }
   | { type: "error"; message: string };
 
 // 从 exceljs 样式转换为我们自己的格式
@@ -241,14 +241,18 @@ async function loadExcelWorkbookBasic(path: string): Promise<ExcelWorkbook> {
 }
 
 // 加载 PDF Blob URL
-async function loadPdfBlobUrl(path: string): Promise<string> {
+async function loadPdfBlobUrl(path: string): Promise<{ url: string; cleanup: () => void }> {
   const bytes = await readFile(path);
   const pdfBlob = new Blob([bytes], { type: "application/pdf" });
-  return URL.createObjectURL(pdfBlob);
+  const url = URL.createObjectURL(pdfBlob);
+  return {
+    url,
+    cleanup: () => URL.revokeObjectURL(url),
+  };
 }
 
 // 加载图片 Blob URL
-async function loadImageBlobUrl(path: string): Promise<string> {
+async function loadImageBlobUrl(path: string): Promise<{ url: string; cleanup: () => void }> {
   const bytes = await readFile(path);
   const ext = path.toLowerCase().split(".").pop() || "png";
   let mimeType = "image/png";
@@ -262,7 +266,11 @@ async function loadImageBlobUrl(path: string): Promise<string> {
   }
 
   const blob = new Blob([bytes], { type: mimeType });
-  return URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    cleanup: () => URL.revokeObjectURL(url),
+  };
 }
 
 // 推断文件类型
@@ -312,21 +320,21 @@ export async function loadPreview(
         if (!previewPath) {
           return { type: "error", message: "当前课表还没有可用的预览文件，请先在课程库中预览一次后再查看。" };
         }
-        const url = await loadPdfBlobUrl(previewPath);
-        return { type: "pdf", url };
+        const { url, cleanup } = await loadPdfBlobUrl(previewPath);
+        return { type: "pdf", url, cleanup };
       }
 
       case "pdf": {
-        const url = await loadPdfBlobUrl(path);
-        return { type: "pdf", url };
+        const { url, cleanup } = await loadPdfBlobUrl(path);
+        return { type: "pdf", url, cleanup };
       }
 
       case "png":
       case "jpeg":
       case "webp":
       case "gif": {
-        const url = await loadImageBlobUrl(path);
-        return { type: "image", url };
+        const { url, cleanup } = await loadImageBlobUrl(path);
+        return { type: "image", url, cleanup };
       }
 
       default:

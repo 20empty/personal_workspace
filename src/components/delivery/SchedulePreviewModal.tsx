@@ -1,5 +1,5 @@
 import { Download, FileSpreadsheet, LayoutList, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PreviewContent, ScheduleFileType } from "../../utils/previewEngine";
 import { getFileTypeLabel } from "../../utils/previewEngine";
 import ExcelRenderer from "../preview/ExcelRenderer";
@@ -30,6 +30,15 @@ export default function SchedulePreviewModal({
   const [activeSheet, setActiveSheet] = useState<string>("");
 
   const fileTypeLabel = useMemo(() => getFileTypeLabel(fileType), [fileType]);
+
+  // 组件卸载时清理 Blob URL
+  useEffect(() => {
+    return () => {
+      if (previewContent?.type === "pdf" || previewContent?.type === "image") {
+        previewContent.cleanup?.();
+      }
+    };
+  }, [previewContent]);
 
   if (!open) return null;
 

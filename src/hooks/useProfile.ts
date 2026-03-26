@@ -13,13 +13,33 @@ const getInitialProfile = (): ProfileInfo => {
   if (saved) {
     try {
       const parsed = JSON.parse(saved) as ProfileInfo;
-      globalProfile = { ...defaultProfile, ...parsed };
+      // 确保所有必要字段都存在，防止数据不完整
+      globalProfile = {
+        ...defaultProfile,
+        name: parsed.name ?? defaultProfile.name,
+        title: parsed.title ?? defaultProfile.title,
+        avatar: parsed.avatar || defaultProfile.avatar,
+        bio: parsed.bio ?? defaultProfile.bio,
+      };
       return globalProfile;
     } catch {
       return defaultProfile;
     }
   }
   return defaultProfile;
+};
+
+// 头像数据太大时 localStorage 会静默失败，需要检测
+const saveProfile = (profile: ProfileInfo): boolean => {
+  try {
+    const serialized = JSON.stringify(profile);
+    window.localStorage.setItem(STORAGE_KEY, serialized);
+    return true;
+  } catch (e) {
+    // localStorage 写入失败（如配额不足），头像可能太大
+    console.warn("头像保存到 localStorage 失败，数据可能被截断", e);
+    return false;
+  }
 };
 
 export function useProfile() {
@@ -30,13 +50,17 @@ export function useProfile() {
       setProfile(next);
     };
     listeners.add(listener);
-    
+
     // Listen for storage events (from other tabs/windows if any)
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
-        const next = JSON.parse(e.newValue) as ProfileInfo;
-        globalProfile = next;
-        listeners.forEach(l => l(next));
+        try {
+          const next = JSON.parse(e.newValue) as ProfileInfo;
+          globalProfile = next;
+          listeners.forEach((l) => l(next));
+        } catch {
+          // ignore parse errors from other tabs
+        }
       }
     };
     window.addEventListener("storage", handleStorage);
@@ -49,7 +73,11 @@ export function useProfile() {
 
   const updateProfile = (next: ProfileInfo) => {
     globalProfile = next;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // 检测 localStorage 写入是否成功
+    const saved = saveProfile(next);
+    if (!saved) {
+      console.error("头像保存失败，请尝试压缩图片或使用更小的头像");
+    }
     listeners.forEach((l) => l(next));
   };
 

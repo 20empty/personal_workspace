@@ -57,34 +57,34 @@ export default function ImageRenderer({ url, fileName }: ImageRendererProps) {
 
       {/* 图片区域 */}
       <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--panel)] p-4">
-        {loading && (
+        {loading ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-sm text-[color:var(--muted)]">正在加载图片...</div>
           </div>
-        )}
-        {error && (
+        ) : error ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-sm text-rose-200">{error}</div>
           </div>
+        ) : (
+          <div className="flex justify-center">
+            <img
+              src={url}
+              alt={fileName}
+              onLoad={() => setLoading(false)}
+              onError={() => {
+                setLoading(false);
+                setError("图片加载失败");
+              }}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                transform: `scale(${scale})`,
+                transformOrigin: "top center",
+                transition: "transform 0.2s ease",
+              }}
+            />
+          </div>
         )}
-        <div className="flex justify-center">
-          <img
-            src={url}
-            alt={fileName}
-            onLoad={() => setLoading(false)}
-            onError={() => {
-              setLoading(false);
-              setError("图片加载失败");
-            }}
-            style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
-              transform: `scale(${scale})`,
-              transformOrigin: "top center",
-              transition: "transform 0.2s ease",
-            }}
-          />
-        </div>
       </div>
     </div>
   );

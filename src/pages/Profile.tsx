@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Camera, Sparkles, UserRound } from "lucide-react";
 import { useProfile } from "../hooks/useProfile";
 
@@ -6,10 +6,30 @@ export default function Profile() {
   const { profile, updateProfile } = useProfile();
   const [form, setForm] = useState(profile);
   const [saved, setSaved] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileId = useId();
 
+  // 使用 ref 存储最新的 form 值，避免闭包陷阱
+  const formRef = useRef(form);
+  formRef.current = form;
+
+  // 同步全局 profile 变化到表单
   useEffect(() => {
-    setForm(profile);  }, [profile]);
+    setForm(profile);
+  }, [profile]);
+
+  // 头像上传后立即同步到全局状态（使用 ref 确保获取最新 form 状态）
+  const handleAvatarChange = (avatarDataUrl: string) => {
+    // 使用 ref 确保获取最新的 form 值，避免 FileReader 异步回调中的闭包问题
+    const updated = { ...formRef.current, avatar: avatarDataUrl };
+    setForm(updated);
+    // 先更新本地状态，再同步到全局状态
+    updateProfile(updated);
+  };
+
+  const handleInputChange = (field: keyof typeof form, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const profileStrength = useMemo(() => {
     const fields = [form.name, form.title, form.avatar];
@@ -60,39 +80,33 @@ export default function Profile() {
                   const reader = new FileReader();
                   reader.onload = () => {
                     if (typeof reader.result === "string") {
-                      const base64 = reader.result;
-                      const newForm = { ...form, avatar: base64 };
-                      setForm(newForm);
-                      updateProfile(newForm);
+                      handleAvatarChange(reader.result);
                     }
                   };
                   reader.readAsDataURL(file);
                 }}
                 className="hidden"
               />
-              <label 
-                htmlFor={fileId} 
-                className="relative cursor-pointer group/avatar-img"
+              <label
+                htmlFor={fileId}
+                className={`relative cursor-pointer group/avatar-img ${isDragging ? "scale-105" : ""}`}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  e.currentTarget.classList.add("scale-105");
+                  setIsDragging(true);
                 }}
                 onDragLeave={(e) => {
                   e.preventDefault();
-                  e.currentTarget.classList.remove("scale-105");
+                  setIsDragging(false);
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
-                  e.currentTarget.classList.remove("scale-105");
+                  setIsDragging(false);
                   const file = e.dataTransfer.files?.[0];
                   if (file && file.type.startsWith("image/")) {
                     const reader = new FileReader();
                     reader.onload = () => {
                       if (typeof reader.result === "string") {
-                        const base64 = reader.result;
-                        const newForm = { ...form, avatar: base64 };
-                        setForm(newForm);
-                        updateProfile(newForm);
+                        handleAvatarChange(reader.result);
                       }
                     };
                     reader.readAsDataURL(file);
@@ -166,9 +180,7 @@ export default function Profile() {
                 昵称
                 <input
                   value={form.name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
+                  onChange={(event) => handleInputChange("name", event.target.value)}
                   className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)] focus:bg-white/5"
                   placeholder="请输入昵称"
                 />
@@ -178,9 +190,7 @@ export default function Profile() {
                 职称/头衔
                 <input
                   value={form.title}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, title: event.target.value }))
-                  }
+                  onChange={(event) => handleInputChange("title", event.target.value)}
                   className="mt-2 w-full rounded-2xl border border-[color:var(--border)] bg-transparent px-4 py-3 text-[color:var(--text)] outline-none transition focus:border-[color:var(--accent)] focus:bg-white/5"
                   placeholder="例如：企业云计算讲师"
                 />

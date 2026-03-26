@@ -79,6 +79,13 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
   const rows = currentSheet?.rows ?? [];
   const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
 
+  // 使用 useMemo 缓存所有单元格的样式，避免每次渲染重新计算
+  const cellStyles = useMemo(() => {
+    return rows.map((row) =>
+      row.map((cell) => (cell ? getCellStyle(cell) : {}))
+    );
+  }, [rows]);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-[color:var(--border)]">
       {/* 表头 */}
@@ -138,7 +145,7 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
                 >
                   {Array.from({ length: Math.max(maxColumns, 1) }).map((_, columnIndex) => {
                     const cell = row[columnIndex];
-                    const cellStyle = cell ? getCellStyle(cell) : {};
+                    const cellStyle = cellStyles[rowIndex]?.[columnIndex] ?? {};
                     const isFirstRow = rowIndex === 0;
 
                     return (

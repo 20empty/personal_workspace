@@ -142,29 +142,6 @@ export default function DeliveryManager() {
     [classes, deleteId]
   );
 
-  const pickCurrentCourse = (courses: CourseRecord[]): CourseRecord | null => {
-    if (courses.length === 0) return null;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const parseDay = (value: string) => new Date(`${value}T00:00:00`).getTime();
-
-    const inProgress = courses.find((course) => {
-      const start = parseDay(course.startDate);
-      const end = parseDay(course.endDate);
-      return start <= today && today <= end;
-    });
-    if (inProgress) return inProgress;
-
-    const upcoming = courses
-      .filter((course) => parseDay(course.startDate) > today)
-      .sort((a, b) => parseDay(a.startDate) - parseDay(b.startDate));
-    if (upcoming.length > 0) return upcoming[0];
-
-    return courses
-      .slice()
-      .sort((a, b) => parseDay(b.endDate) - parseDay(a.endDate))[0];
-  };
-
   useEffect(() => {
     if (activeClassIds.length === 0) {
       setActiveCoursesMap({});
@@ -441,7 +418,7 @@ export default function DeliveryManager() {
                           <div className="absolute left-3 top-3 bottom-3 w-0.5 bg-gradient-to-b from-sky-500 via-cyan-500 to-emerald-500 light:bg-gradient-to-b light:from-sky-400 light:via-cyan-400 light:to-emerald-400" />
                           {/* 时间线节点 */}
                           <div className="space-y-2 pl-8">
-                            {activeCoursesMap[activeClass.id].map((course, idx) => {
+                            {activeCoursesMap[activeClass.id].map((course) => {
                               const now = new Date();
                               const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
                               const start = new Date(course.startDate).getTime();

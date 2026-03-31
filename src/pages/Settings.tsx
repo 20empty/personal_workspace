@@ -606,14 +606,14 @@ export default function Settings() {
                                 type="text"
                                 defaultValue={tpl.name}
                                 id={`edit-name-${tpl.id}`}
-                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
                               />
                             </td>
                             <td className="px-5 py-3">
                               <select
                                 defaultValue={tpl.level}
                                 id={`edit-level-${tpl.id}`}
-                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
                               >
                                 <option value="L2">L2</option>
                                 <option value="L3">L3</option>
@@ -625,7 +625,7 @@ export default function Settings() {
                                 type="text"
                                 defaultValue={tpl.days}
                                 id={`edit-days-${tpl.id}`}
-                                className="w-full rounded-xl border border-[color:var(--border)] bg-black/20 px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--text)] outline-none focus:border-sky-500"
                               />
                             </td>
                             <td className="px-5 py-3 text-[color:var(--muted)]">-</td>
@@ -659,7 +659,7 @@ export default function Settings() {
                           <>
                             <td className="px-5 py-3 text-[color:var(--text)] font-medium">{tpl.name}</td>
                             <td className="px-5 py-3">
-                              <span className="inline-block rounded-full border border-sky-300/35 bg-sky-300/28 px-2.5 py-0.5 text-[10px] font-semibold text-sky-950">
+                              <span className="inline-block rounded-full border border-sky-400/40 bg-sky-500/25 px-2.5 py-0.5 text-[10px] font-semibold text-slate-900 dark:border-sky-300/30 dark:bg-sky-400/25 dark:text-white">
                                 {tpl.level}
                               </span>
                             </td>

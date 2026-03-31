@@ -60,7 +60,7 @@ export default function DeliveryManager() {
   } | null>(null);
   const [isTransitionSubmitting, setIsTransitionSubmitting] = useState(false);
   const [classes, setClasses] = useState<ViewClass[]>([]);
-  const [activeCourseMap, setActiveCourseMap] = useState<Record<string, CourseRecord | null>>({});
+  const [activeCoursesMap, setActiveCoursesMap] = useState<Record<string, CourseRecord[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const formatDate = (value: string) => value.replace(/-/g, ".");
@@ -167,7 +167,7 @@ export default function DeliveryManager() {
 
   useEffect(() => {
     if (activeClassIds.length === 0) {
-      setActiveCourseMap({});
+      setActiveCoursesMap({});
       return;
     }
     let cancelled = false;
@@ -176,16 +176,20 @@ export default function DeliveryManager() {
         const entries = await Promise.all(
           activeClassIds.map(async (classId) => {
             const courses = await getCoursesByClassId(classId);
-            return [classId, pickCurrentCourse(courses)] as const;
+            // 按开始日期排序所有课程
+            const sorted = courses.slice().sort((a, b) => {
+              return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+            });
+            return [classId, sorted] as const;
           })
         );
         if (!cancelled) {
-          setActiveCourseMap(Object.fromEntries(entries));
+          setActiveCoursesMap(Object.fromEntries(entries));
         }
       } catch (err) {
         console.error("Failed to load active class courses:", err);
         if (!cancelled) {
-          setActiveCourseMap({});
+          setActiveCoursesMap({});
         }
       }
     };
@@ -338,7 +342,7 @@ export default function DeliveryManager() {
                   当前正在交付
                 </h2>
               </div>
-              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-400">
+              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-400 light:bg-emerald-100 light:text-emerald-700 light:border light:border-emerald-300">
                 {activeClasses.length} 进行中
               </span>
             </div>
@@ -348,23 +352,24 @@ export default function DeliveryManager() {
                 {activeClasses.map((activeClass) => (
                   <div
                     key={activeClass.id}
-                    className="grid gap-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1.1fr_0.9fr] cursor-pointer transition hover:border-[color:var(--accent)]/40"
+                    className="space-y-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 cursor-pointer transition hover:border-[color:var(--accent)]/40"
                     onClick={() => navigate(`/delivery/${activeClass.id}`)}
                   >
-                    <div className="space-y-3">
+                    {/* 班级基本信息 */}
+                    <div className="space-y-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text)]/78">
                             <span className="break-all">{activeClass.code}</span>
                           </p>
-                          <h3 
-                            className="mt-2 line-clamp-2 text-2xl font-semibold leading-tight text-[color:var(--text)]"
+                          <h3
+                            className="mt-2 line-clamp-2 text-xl font-semibold leading-tight text-[color:var(--text)]"
                             title={activeClass.title}
                           >
                             {activeClass.title}
                           </h3>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             onClick={(event) => {
                               event.stopPropagation();
@@ -374,7 +379,7 @@ export default function DeliveryManager() {
                                 type: "complete",
                               });
                             }}
-                            className="inline-flex h-8 items-center gap-1 rounded-full border border-emerald-400/40 px-3 text-xs text-emerald-300 transition hover:bg-emerald-500/10"
+                            className="inline-flex h-8 items-center gap-1 rounded-full border border-emerald-400/40 px-3 text-xs text-emerald-300 transition hover:bg-emerald-500/10 light:border-emerald-400 light:text-emerald-700 light:hover:bg-emerald-50"
                             title="完结交付"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -385,7 +390,7 @@ export default function DeliveryManager() {
                               event.stopPropagation();
                               setDeleteId(activeClass.id);
                             }}
-                            className="grid h-8 w-8 place-items-center rounded-full border border-rose-400/30 text-rose-300 transition hover:border-rose-400/60 hover:bg-rose-500/10"
+                            className="grid h-8 w-8 place-items-center rounded-full border border-rose-400/30 text-rose-300 transition hover:border-rose-400/60 hover:bg-rose-500/10 light:border-rose-400 light:text-rose-500 light:hover:bg-rose-50"
                             title="删除"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -406,7 +411,7 @@ export default function DeliveryManager() {
                           {activeClass.dateRange}
                         </span>
                       </div>
-                      <div className="mt-4 h-2 w-full rounded-full bg-black/20">
+                      <div className="h-2 w-full rounded-full bg-black/20 light:bg-slate-200">
                         <div
                           className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500"
                           style={{ width: `${activeClass.progress}%` }}
@@ -420,38 +425,71 @@ export default function DeliveryManager() {
                       </div>
                     </div>
 
-                    <div className="rounded-[24px] border border-sky-400/20 bg-gradient-to-br from-sky-500/10 via-cyan-500/8 to-transparent p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs uppercase tracking-[0.3em] text-sky-100/75">
-                          当前交付课程
+                    {/* 课程时间线 */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
+                          课程排期
                         </p>
-                        <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.22em] text-sky-100/70">
-                          Review
+                        <span className="text-xs text-[color:var(--muted)]">
+                          共 {activeCoursesMap[activeClass.id]?.length || 0} 门课程
                         </span>
                       </div>
-                      {activeCourseMap[activeClass.id] ? (
-                        <div className="mt-4 space-y-3">
-                          <p className="text-base font-semibold text-[color:var(--text)]">
-                            {activeCourseMap[activeClass.id]?.name}
-                          </p>
-                          <div className="grid gap-2 text-xs text-[color:var(--text)]/70">
-                            <div className="flex items-center gap-2">
-                              <CalendarClock className="h-3.5 w-3.5 text-sky-300" />
-                              {activeCourseMap[activeClass.id]?.startDate.replace(/-/g, ".")}
-                              {" - "}
-                              {activeCourseMap[activeClass.id]?.endDate.replace(/-/g, ".")}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Users className="h-3.5 w-3.5 text-sky-300" />
-                              当前排期 {activeCourseMap[activeClass.id]?.days} 天
-                            </div>
-                          </div>
-                          <div className="rounded-2xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-[color:var(--text)]/65">
-                            当前展示的是进行中班级最相关的一门课程，方便快速审阅时间范围与课表资料。
+                      {activeCoursesMap[activeClass.id] && activeCoursesMap[activeClass.id].length > 0 ? (
+                        <div className="relative">
+                          {/* 时间线轴 */}
+                          <div className="absolute left-3 top-3 bottom-3 w-0.5 bg-gradient-to-b from-sky-500 via-cyan-500 to-emerald-500 light:bg-gradient-to-b light:from-sky-400 light:via-cyan-400 light:to-emerald-400" />
+                          {/* 时间线节点 */}
+                          <div className="space-y-2 pl-8">
+                            {activeCoursesMap[activeClass.id].map((course, idx) => {
+                              const now = new Date();
+                              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                              const start = new Date(course.startDate).getTime();
+                              const end = new Date(course.endDate).getTime();
+                              const isInProgress = start <= today && today <= end;
+                              const isPast = end < today;
+                              return (
+                                <div
+                                  key={course.id}
+                                  className={`
+                                    relative flex items-center justify-between rounded-xl border px-3 py-2.5 transition-all
+                                    ${isInProgress ? 'border-sky-400/50 bg-sky-500/15 light:border-sky-500 light:bg-sky-50' : ''}
+                                    ${isPast ? 'border-[color:var(--border)] bg-[color:var(--panel)]/50 opacity-60' : ''}
+                                    ${!isInProgress && !isPast ? 'border-[color:var(--border)] bg-[color:var(--panel)]/80' : ''}
+                                  `}
+                                >
+                                  {/* 状态点 */}
+                                  <div className={`
+                                    absolute -left-8 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2
+                                    ${isInProgress ? 'bg-sky-400 border-sky-300 light:bg-sky-500 light:border-sky-600' : ''}
+                                    ${isPast ? 'bg-emerald-400 border-emerald-300' : ''}
+                                    ${!isInProgress && !isPast ? 'bg-slate-500 border-slate-400' : ''}
+                                  `} />
+                                  {/* 课程信息 */}
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`text-sm font-medium truncate ${isInProgress ? 'text-sky-200 light:text-sky-800' : 'text-[color:var(--text)]'}`}>
+                                      {course.name}
+                                    </p>
+                                    <p className="text-xs text-[color:var(--muted)] mt-0.5">
+                                      {course.startDate.replace(/-/g, '.')} - {course.endDate.replace(/-/g, '.')}
+                                    </p>
+                                  </div>
+                                  {/* 天数标签 */}
+                                  <span className={`
+                                    ml-3 rounded-full px-2 py-0.5 text-xs font-medium
+                                    ${isInProgress ? 'bg-sky-500/30 text-sky-200 light:bg-sky-200 light:text-sky-700' : ''}
+                                    ${isPast ? 'bg-emerald-500/20 text-emerald-300' : ''}
+                                    ${!isInProgress && !isPast ? 'bg-slate-500/20 text-slate-300' : ''}
+                                  `}>
+                                    {course.days}天
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ) : (
-                        <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-sm text-[color:var(--muted)]">
+                        <p className="rounded-xl border border-dashed border-[color:var(--border)] px-4 py-4 text-sm text-[color:var(--muted)] text-center">
                           暂无课程安排
                         </p>
                       )}
@@ -593,7 +631,7 @@ export default function DeliveryManager() {
                             type: "start",
                           });
                         }}
-                        className="inline-flex h-8 items-center gap-1 rounded-full border border-cyan-400/40 px-3 text-xs text-cyan-300 transition hover:bg-cyan-500/10"
+                        className="inline-flex h-8 items-center gap-1 rounded-full border border-cyan-400/40 px-3 text-xs text-cyan-300 transition hover:bg-cyan-500/10 light:border-cyan-500 light:text-cyan-700 light:hover:bg-cyan-50"
                         title="开始交付"
                       >
                         <Play className="h-3.5 w-3.5" />

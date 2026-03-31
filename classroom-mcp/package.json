@@ -1,0 +1,27 @@
+{
+  "name": "classroom-mcp",
+  "version": "1.0.0",
+  "description": "Classroom MCP Server for AI Agent interaction",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "classroom-mcp": "./bin/classroom-mcp.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

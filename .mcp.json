@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "classroom": {
+      "command": "node",
+      "args": ["/Users/jerry/codex/personal workspace/classroom-mcp/dist/index.js"]
+    }
+  }
+}

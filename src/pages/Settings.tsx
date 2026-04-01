@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowDown, ArrowUp, Download, FileSpreadsheet, FolderOpen, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import SchedulePreviewModal from "../components/delivery/SchedulePreviewModal";
+import { useUpdater } from "../components/layout/UpdateProvider";
 import {
   CLASS_TYPE_LABELS,
   createCourseTemplate,
@@ -42,6 +44,21 @@ type PreviewState = {
 const SCHEDULE_FILE_FILTER = [{ name: "课表文件", extensions: ["xlsx", "xls", "numbers", "pdf", "png", "jpg", "jpeg", "webp", "gif"] }];
 
 export default function Settings() {
+  const {
+    appVersion,
+    availability,
+    latestVersion,
+    releaseDate,
+    releaseNotes,
+    errorMessage,
+    checkedAt,
+    checking,
+    downloading,
+    progress,
+    checkNow,
+    installUpdate,
+    dismissPrompt,
+  } = useUpdater();
   const [classType, setClassType] = useState<ClassType>("centralized");
   const [templates, setTemplates] = useState<SopTemplateRecord[]>([]);
   const [courseTemplates, setCourseTemplates] = useState<CourseTemplateRecord[]>([]);
@@ -372,13 +389,152 @@ export default function Settings() {
     }
   };
 
+  const checkedAtText = checkedAt
+    ? new Intl.DateTimeFormat("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(checkedAt))
+    : "尚未检查";
+
+  const openReleasePage = async () => {
+    try {
+      await openUrl("https://github.com/20empty/personal_workspace/releases/latest");
+    } catch (error) {
+      console.error("Failed to open release page:", error);
+      window.alert("无法打开 GitHub Release 页面，请稍后重试。");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">Settings</p>
         <h1 className="mt-2 text-2xl font-semibold text-[color:var(--text)]">设置</h1>
-        <p className="mt-2 text-sm text-[color:var(--muted)]">SOP 模版配置</p>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">SOP 模版配置与桌面应用更新</p>
       </header>
+
+      <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[color:var(--text)]">应用更新</h2>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">
+              当前版本 {appVersion}，应用启动时会自动静默检查更新。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void openReleasePage()}
+              className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--border)] px-3 py-2 text-xs text-[color:var(--muted)] transition hover:text-[color:var(--text)]"
+            >
+              <Download className="h-3.5 w-3.5" />
+              查看 Release
+            </button>
+            <button
+              type="button"
+              onClick={() => void checkNow()}
+              disabled={checking || downloading}
+              className="inline-flex items-center gap-1 rounded-xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[color:var(--accent)]/90 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${checking ? "animate-spin" : ""}`} />
+              {checking ? "检查中..." : "检查更新"}
+            </button>
+          </div>
+        </header>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-[color:var(--muted)]">Updater</p>
+                <p className="mt-2 text-xl font-semibold text-[color:var(--text)]">
+                  {availability === "available" ? `发现新版本 ${latestVersion}` : "当前版本状态正常"}
+                </p>
+              </div>
+              <span className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)]">
+                最近检查：{checkedAtText}
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-2 text-sm text-[color:var(--muted)]">
+              <p>当前版本：{appVersion}</p>
+              <p>最新版本：{latestVersion ?? "尚未发现新版本"}</p>
+              <p>发布时间：{releaseDate ?? "尚未获取"}</p>
+              <p>
+                状态：
+                {availability === "available" && " 可更新"}
+                {availability === "unavailable" && " 已是最新版本"}
+                {availability === "error" && " 检查失败"}
+                {availability === "unsupported" && " 当前运行环境不支持应用内更新"}
+                {availability === "idle" && " 等待首次检查"}
+              </p>
+            </div>
+
+            {releaseNotes ? (
+              <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-[color:var(--muted)]">Release Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[color:var(--text)]">
+                  {releaseNotes}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--text)]">更新操作</p>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
+              发现新版本后，由你确认下载并安装。安装完成后应用会自动重启。
+            </p>
+
+            {errorMessage ? (
+              <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            {downloading ? (
+              <div className="mt-4 space-y-2">
+                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-emerald-400 transition-all"
+                    style={{ width: `${progress?.percent ?? 0}%` }}
+                  />
+                </div>
+                <p className="text-xs text-[color:var(--muted)]">
+                  已下载 {progress?.downloadedBytes ?? 0}
+                  {progress?.contentLength ? ` / ${progress.contentLength}` : " 字节"}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  dismissPrompt();
+                  void installUpdate();
+                }}
+                disabled={availability !== "available" || downloading}
+                className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500/90 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {downloading ? "正在下载更新..." : "下载并安装"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void checkNow()}
+                disabled={checking || downloading}
+                className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)] transition hover:text-[color:var(--text)] disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
+                手动重新检查
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <div className="flex flex-wrap gap-2">

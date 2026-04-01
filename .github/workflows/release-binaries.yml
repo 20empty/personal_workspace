@@ -29,6 +29,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CI: true
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
@@ -44,6 +46,20 @@ jobs:
 
       - name: Install frontend deps
         run: npm install
+
+      - name: Validate release versions
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          CARGO_VERSION=$(node -p "const fs=require('fs'); const m=fs.readFileSync('./src-tauri/Cargo.toml','utf8').match(/^version = \"([^\"]+)\"/m); if (!m) process.exit(1); m[1]")
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+
+          test "$PACKAGE_VERSION" = "$TAURI_VERSION"
+          test "$PACKAGE_VERSION" = "$CARGO_VERSION"
+          test "$INPUT_TAG" = "$EXPECTED_TAG"
 
       - name: Build frontend assets
         run: npm run build
@@ -140,11 +156,24 @@ jobs:
           cp -R "$BUNDLE_DIR" "out/bundle"
           cp out-beta-note.txt "out/bundle/UNSIGNED-BETA-NOTICE.txt"
 
+      - name: Collect updater artifacts
+        shell: bash
+        run: |
+          mkdir -p out/updater
+          find src-tauri/target -type f \( -name "*.sig" -o -name "latest*.json" \) -exec cp {} out/updater/ \;
+
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: out/bundle
+          if-no-files-found: error
+
+      - name: Upload updater artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-updater
+          path: out/updater
           if-no-files-found: error
 
   publish:
@@ -194,6 +223,49 @@ jobs:
 
           gh release edit "$TAG" --notes-file release-notes.md
 
+      - name: Merge updater manifests
+        shell: bash
+        run: |
+          mkdir -p merged-updater
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'artifacts';
+          const manifests = [];
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                walk(fullPath);
+                continue;
+              }
+              if (entry.name.startsWith('latest') && entry.name.endsWith('.json')) {
+                manifests.push(fullPath);
+              }
+            }
+          }
+
+          walk(root);
+
+          if (manifests.length === 0) {
+            throw new Error('No updater manifest files found');
+          }
+
+          const merged = manifests
+            .map((file) => JSON.parse(fs.readFileSync(file, 'utf8')))
+            .reduce((acc, manifest) => {
+              acc.version ??= manifest.version;
+              acc.notes ??= manifest.notes;
+              acc.pub_date ??= manifest.pub_date;
+              acc.platforms = { ...(acc.platforms || {}), ...(manifest.platforms || {}) };
+              return acc;
+            }, {});
+
+          fs.writeFileSync(path.join('merged-updater', 'latest.json'), JSON.stringify(merged, null, 2));
+          EOF
+
       - name: Upload binary assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -202,9 +274,13 @@ jobs:
           mapfile -t files < <(find artifacts -type f \( \
             -name "*.dmg" -o \
             -name "*.app.tar.gz" -o \
+            -name "*.sig" -o \
             -name "*.msi" -o \
             -name "*.exe" -o \
             -name "*.zip" \))
+
+          mapfile -t merged_files < <(find merged-updater -type f -name "latest.json")
+          files+=("${merged_files[@]}")
 
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release files found to upload"

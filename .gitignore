@@ -3,6 +3,9 @@ node_modules
 *.log
 dist
 .vite
+.tauri/*.key
+.tauri/*.key.old
+.tauri/*.pub
 tsconfig.tsbuildinfo
 src-tauri/target
 src-tauri/.cargo

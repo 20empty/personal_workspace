@@ -12,6 +12,7 @@ import {
   Trash2,
   Archive,
   Inbox,
+  Upload,
 } from "lucide-react";
 import {
   createDeliveryClass,
@@ -25,9 +26,12 @@ import {
   type CourseRecord,
   type CreatePayload,
 } from "../db/delivery";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { executeClassImport, type ImportSummary } from "../utils/classImporter";
 
 import DeleteConfirmModal from "../components/delivery/DeleteConfirmModal";
 import CreateClassModal from "../components/delivery/CreateClassModal";
+import ImportResultModal from "../components/delivery/ImportResultModal";
 
 export type ViewClass = Pick<
   DeliveryClassRecord,
@@ -53,6 +57,9 @@ export default function DeliveryManager() {
   const navigate = useNavigate();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportSummary | null>(null);
+  const [showImportResult, setShowImportResult] = useState(false);
   const [transitionAction, setTransitionAction] = useState<{
     id: string;
     title: string;
@@ -111,6 +118,37 @@ export default function DeliveryManager() {
       cancelled = true;
     };
   }, [loadClasses]);
+
+  const handleImportClasses = async () => {
+    try {
+      const filePath = await openFileDialog({
+        multiple: false,
+        filters: [{ name: "Excel", extensions: ["xlsx", "xls"] }],
+      });
+
+      if (!filePath) return;
+
+      setIsImporting(true);
+      const summary = await executeClassImport(filePath);
+      setImportResult(summary);
+      setShowImportResult(true);
+
+      // 刷新列表
+      const rows = await loadClasses();
+      setClasses(rows);
+    } catch (err) {
+      console.error("Import failed:", err);
+      setImportResult({
+        success: false,
+        totalClasses: 0,
+        createdClassIds: [],
+        errors: [{ classCode: "", message: err instanceof Error ? err.message : String(err) }],
+      });
+      setShowImportResult(true);
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const activeClasses = useMemo(
     () => classes.filter((item) => item.stage === "active"),
@@ -297,6 +335,14 @@ export default function DeliveryManager() {
               同步中
             </span>
           ) : null}
+          <button
+            onClick={handleImportClasses}
+            disabled={isImporting}
+            className="inline-flex items-center gap-2 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-3 text-sm font-medium text-[color:var(--text)] transition hover:border-[color:var(--accent)]/50 disabled:opacity-50"
+          >
+            <Upload className="h-4 w-4" />
+            {isImporting ? "导入中..." : "导入班级"}
+          </button>
           <button
             onClick={() => setIsCreateOpen(true)}
             className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/20"
@@ -706,6 +752,12 @@ export default function DeliveryManager() {
           />
         ) : null}
       </AnimatePresence>
+
+      <ImportResultModal
+        isOpen={showImportResult}
+        onClose={() => setShowImportResult(false)}
+        summary={importResult}
+      />
     </div>
   );
 }

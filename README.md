@@ -3,6 +3,13 @@
 > Offline-first desktop workspace for delivery-focused trainers and course builders.  
 > 面向培训交付与课程开发场景的本地优先桌面工作台。
 
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
+[![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+
+**Quick Links**: [Highlights](#highlights) · [Screenshots](#screenshots) · [Quick Start](#quick-start) · [Release & Auto Update](#release--auto-update)
+
 Classroom 是一个基于 Tauri v2 构建的桌面应用，围绕「培训交付」与「课件开发」两条主线，把班级管理、SOP 执行、课程库、课表预览、开发看板和数据总览整合到一个本地应用中。
 
 它适合这样的工作流：
@@ -13,7 +20,7 @@ Classroom 是一个基于 Tauri v2 构建的桌面应用，围绕「培训交付
 
 ![Classroom Demo Recording](./assets/demo.webp)
 
-## Why Classroom
+## Highlights
 
 - **Offline-first**: 核心数据保存在本地 SQLite，断网也能继续工作
 - **Delivery-centric**: 围绕班级生命周期设计，不是通用项目管理工具的硬套壳
@@ -21,6 +28,27 @@ Classroom 是一个基于 Tauri v2 构建的桌面应用，围绕「培训交付
 - **Built for course operations**: 同时覆盖培训交付、课程资料维护与版本推进
 - **Desktop-native**: 基于 Tauri，启动快、体积轻、资源占用低
 - **In-app updater**: 支持通过 GitHub Releases 做桌面端应用内更新
+
+## Screenshots
+
+### Dashboard
+
+![Dashboard](./assets/dashboard.png)
+
+### Delivery Manager
+
+![Delivery Manager](./assets/delivery.png)
+
+### Settings & Updater
+
+![Settings](./assets/settings.png)
+
+## Workflow Fit
+
+- 适合讲师、交付经理、课程负责人长期维护自己的本地工作台
+- 适合把班级交付和课件开发放在同一个系统里统一跟进
+- 适合对数据隐私和离线可用性有要求的小团队或个人
+- 不追求复杂的多人 SaaS 协作，更强调个人桌面端效率
 
 ## Core Modules
 
@@ -97,6 +125,15 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
+### Common Scripts
+
+```bash
+npm run dev
+npm run build
+npm run tauri:dev
+npm run tauri:build
+```
+
 ## Local Data
 
 - 本地数据库默认使用 SQLite
@@ -109,6 +146,7 @@ npm run tauri:build
 
 - Release workflow: [.github/workflows/release-binaries.yml](.github/workflows/release-binaries.yml)
 - Signing guide: [docs/release-signing.md](docs/release-signing.md)
+- Latest releases: [GitHub Releases](https://github.com/20empty/personal_workspace/releases)
 
 发布时需要保证：
 - `package.json`
@@ -128,6 +166,12 @@ npm run tauri:build
 - [ ] 交付总结导出
 - [ ] 数据导入导出
 - [ ] 更完整的发布说明与截图文档
+
+## Notes
+
+- 当前仓库以桌面端体验为主，不提供 Web 部署形态
+- 自动更新依赖 GitHub Releases 与 updater 签名配置
+- 如果你在 Windows 上本地开发，请优先确认 WebView2 和构建工具链已安装
 
 ## License
 

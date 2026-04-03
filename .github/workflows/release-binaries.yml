@@ -68,7 +68,13 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build Tauri bundle
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            npm run tauri build -- --target ${{ matrix.target }} -b app
+          else
+            npm run tauri build -- --target ${{ matrix.target }}
+          fi
 
       - name: Sign Windows installers (optional)
         if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != ''

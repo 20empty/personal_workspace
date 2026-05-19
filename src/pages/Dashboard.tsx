@@ -12,13 +12,20 @@ import {
   Globe,
   Users,
   Layers,
+  AlertTriangle,
+  ArrowRight,
+  Plus,
+  Upload,
+  Rocket,
 } from "lucide-react";
 import {
   getCoursesByClassId,
+  getSopTasksByClassId,
   listDeliveryClasses,
   listCoursesByClassIds,
   type CourseRecord,
   type DeliveryClassRecord,
+  type SopTaskRecord,
   type ClassType,
 } from "../db/delivery";
 import {
@@ -35,6 +42,7 @@ import ClassTypeDistribution, { type ClassTypeItem } from "../components/dashboa
 import GeoBreakdown, { type GeoItem } from "../components/dashboard/GeoBreakdown";
 import LearnerCountCard, { type LearnerStats } from "../components/dashboard/LearnerCountCard";
 import StageDistribution, { type StageItem } from "../components/dashboard/StageDistribution";
+import { buildDashboardInsights, type DashboardActionItem } from "../utils/dashboardInsights";
 
 /* ───────── Helpers ───────── */
 
@@ -117,6 +125,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<DeliveryClassRecord[]>([]);
   const [courses, setCourses] = useState<CourseRecord[]>([]);
+  const [coursesByClassId, setCoursesByClassId] = useState<Record<string, CourseRecord[]>>({});
+  const [sopTasksByClassId, setSopTasksByClassId] = useState<Record<string, SopTaskRecord[]>>({});
   const [teachingTasks, setTeachingTasks] = useState<TeachingTask[]>([]);
   const [devSnapshot, setDevSnapshot] = useState<DevSnapshot>({ projects: [], tasks: [] });
 
@@ -181,14 +191,26 @@ export default function Dashboard() {
 
         // 加载所有课程用于 PO 按等级统计
         const allCourses = await listCoursesByClassIds(rows.map((r) => r.id));
+        const [courseEntries, sopEntries] = await Promise.all([
+          Promise.all(
+            rows.map(async (item) => [item.id, await getCoursesByClassId(item.id)] as const)
+          ),
+          Promise.all(
+            rows.map(async (item) => [item.id, await getSopTasksByClassId(item.id)] as const)
+          ),
+        ]);
         if (!cancelled) {
           setCourses(allCourses);
+          setCoursesByClassId(Object.fromEntries(courseEntries));
+          setSopTasksByClassId(Object.fromEntries(sopEntries));
         }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
         if (!cancelled) {
           setClasses([]);
           setCourses([]);
+          setCoursesByClassId({});
+          setSopTasksByClassId({});
           setTeachingTasks([]);
           setDevSnapshot({ projects: [], tasks: [] });
         }
@@ -393,6 +415,31 @@ export default function Dashboard() {
     return { yearOverseas, yearPo, yearDevPo };
   }, [classes, devSnapshot.projects, filter.year]);
 
+  const dailyInsights = useMemo(
+    () =>
+      buildDashboardInsights({
+        classes,
+        coursesByClassId,
+        sopTasksByClassId,
+        devProjects: devSnapshot.projects,
+        devTasks: devSnapshot.tasks,
+      }),
+    [classes, coursesByClassId, devSnapshot.projects, devSnapshot.tasks, sopTasksByClassId]
+  );
+
+  const openInsightTarget = (item: DashboardActionItem) => {
+    if (item.target.type === "delivery") {
+      navigate(`/delivery/${item.target.classId}`);
+      return;
+    }
+    navigate("/dev", {
+      state: {
+        activeTab: "kanban",
+        selectedProjectId: item.target.projectId,
+      },
+    });
+  };
+
   return (
     <div className="relative space-y-6">
       {/* Header */}
@@ -421,90 +468,164 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* 今日行动区 */}
+      <section className="overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] shadow-lg shadow-black/10">
+        <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-strong)] px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-[color:var(--muted)]">Daily Desk</p>
+              <h2 className="mt-2 text-xl font-semibold text-[color:var(--text)]">今天该做什么</h2>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">
+                交付、SOP、归档和课程开发的下一步都集中在这里。
+              </p>
+            </div>
+            <div className="flex max-w-full flex-wrap justify-start gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/delivery", { state: { openCreate: true } })}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-3 text-sm font-semibold text-white transition hover:bg-[color:var(--accent)]/90"
+              >
+                <Plus className="h-4 w-4" />
+                新建班级
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/delivery", { state: { openImport: true } })}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[color:var(--border)] px-3 text-sm font-semibold text-[color:var(--text)] transition hover:bg-white/[0.04]"
+              >
+                <Upload className="h-4 w-4" />
+                导入班级
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/dev", { state: { activeTab: "kanban" } })}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[color:var(--border)] px-3 text-sm font-semibold text-[color:var(--text)] transition hover:bg-white/[0.04]"
+              >
+                <Rocket className="h-4 w-4" />
+                开发看板
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 p-5 md:grid-cols-[1.12fr_0.88fr]">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-[color:var(--text)]">今日行动</p>
+              <button
+                type="button"
+                onClick={() => navigate("/delivery")}
+                className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--muted)] transition hover:text-[color:var(--text)]"
+              >
+                查看排期
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {dailyInsights.actions.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--panel-strong)] px-5 py-8 text-center">
+                <p className="text-sm font-medium text-[color:var(--text)]">今天没有必须处理的事项</p>
+                <p className="mt-1 text-sm text-[color:var(--muted)]">可以查看排期，或继续整理课程库与开发看板。</p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/delivery")}
+                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-[color:var(--border)] px-3 text-sm text-[color:var(--text)] transition hover:bg-white/[0.04]"
+                >
+                  查看交付排期
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {dailyInsights.actions.slice(0, 4).map((item) => (
+                  <InsightButton key={item.id} item={item} onClick={() => openInsightTarget(item)} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-[color:var(--text)]">数据快照</p>
+                <span className="rounded-full border border-[color:var(--border)] px-2 py-0.5 text-xs text-[color:var(--muted)]">
+                  {filter.year}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <SnapshotMetric label="总 PO" value={filterYearStats.yearPo + filterYearStats.yearDevPo} tone="sky" />
+                <SnapshotMetric label="班级数" value={filteredClasses.length} tone="emerald" />
+                <SnapshotMetric label="学员数" value={learnerStats.total} tone="violet" />
+                <SnapshotMetric label="地区数" value={filterYearStats.yearOverseas} tone="amber" />
+              </div>
+              <p className="mt-3 text-xs text-[color:var(--muted)]">
+                授课 PO {filterYearStats.yearPo} · 开发 PO {filterYearStats.yearDevPo}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  <p className="text-sm font-semibold text-[color:var(--text)]">风险提醒</p>
+                </div>
+                <span className="rounded-full border border-[color:var(--border)] px-2 py-0.5 text-xs text-[color:var(--muted)]">
+                  {dailyInsights.risks.length}
+                </span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {dailyInsights.risks.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[color:var(--border)] px-4 py-6 text-center text-sm text-[color:var(--muted)]">
+                    暂无需要关注的风险。
+                  </div>
+                ) : (
+                  dailyInsights.risks.slice(0, 4).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => openInsightTarget(item)}
+                      className="w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-3 text-left transition hover:border-amber-400/40 hover:bg-white/[0.03]"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-medium text-[color:var(--text)]">{item.title}</p>
+                        <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-amber-300">{item.reason}</p>
+                      <p className="mt-1 truncate text-xs text-[color:var(--muted)]">{item.meta}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 筛选栏 */}
       <DashboardFilterBar filter={filter} onChange={setFilter} />
 
-      {/* 年度总览卡片 */}
-      <section className="grid gap-4 sm:grid-cols-3 xl:grid-cols-4">
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0, duration: 0.4, ease: "easeOut" }}
-          whileHover={{ y: -4 }}
-          className="group relative overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-lg shadow-black/10 transition"
-        >
-          <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-sky-500/20 blur-2xl transition group-hover:scale-110" />
-          <p className="text-sm text-[color:var(--muted)]">{filter.year} 年总 PO</p>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold text-sky-400">
-              {filterYearStats.yearPo + filterYearStats.yearDevPo}
-            </span>
-            <span className="text-sm text-[color:var(--muted)]">个</span>
-          </div>
-          <div className="mt-2 flex gap-3 text-xs text-[color:var(--muted)]">
-            <span>授课 {filterYearStats.yearPo}</span>
-            <span>开发 {filterYearStats.yearDevPo}</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.4, ease: "easeOut" }}
-          whileHover={{ y: -4 }}
-          className="group relative overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-lg shadow-black/10 transition"
-        >
-          <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-emerald-500/20 blur-2xl transition group-hover:scale-110" />
-          <p className="text-sm text-[color:var(--muted)]">筛选班级数</p>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold text-emerald-400">
-              {filteredClasses.length}
-            </span>
-            <span className="text-sm text-[color:var(--muted)]">个班级</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.4, ease: "easeOut" }}
-          whileHover={{ y: -4 }}
-          className="group relative overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-lg shadow-black/10 transition"
-        >
-          <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-amber-500/20 blur-2xl transition group-hover:scale-110" />
-          <p className="text-sm text-[color:var(--muted)]">已前往国家/地区</p>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold text-amber-400">
-              {filterYearStats.yearOverseas}
-            </span>
-            <span className="text-sm text-[color:var(--muted)]">个</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.4, ease: "easeOut" }}
-          whileHover={{ y: -4 }}
-          className="group relative overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-lg shadow-black/10 transition"
-        >
-          <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-purple-500/20 blur-2xl transition group-hover:scale-110" />
-          <p className="text-sm text-[color:var(--muted)]">总学员数</p>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-3xl font-semibold text-purple-400">
-              {learnerStats.total}
-            </span>
-            <span className="text-sm text-[color:var(--muted)]">人</span>
-          </div>
-        </motion.div>
-      </section>
+      {/* 数据概览 */}
+      <CollapsibleSection
+        title="数据概览"
+        subtitle="年度 PO、班级、学员与地区"
+        icon={<BarChart3 className="h-4 w-4" />}
+        defaultExpanded={false}
+      >
+        <section className="grid gap-4 sm:grid-cols-3 xl:grid-cols-4">
+          <OverviewMetric label={`${filter.year} 年总 PO`} value={filterYearStats.yearPo + filterYearStats.yearDevPo} suffix="个" meta={`授课 ${filterYearStats.yearPo} · 开发 ${filterYearStats.yearDevPo}`} tone="sky" />
+          <OverviewMetric label="筛选班级数" value={filteredClasses.length} suffix="个班级" tone="emerald" />
+          <OverviewMetric label="已前往国家/地区" value={filterYearStats.yearOverseas} suffix="个" tone="amber" />
+          <OverviewMetric label="总学员数" value={learnerStats.total} suffix="人" tone="violet" />
+        </section>
+      </CollapsibleSection>
 
       {/* PO 总览 */}
       <CollapsibleSection
         title="PO 分解"
         subtitle="授课 PO 与开发 PO 占比"
         icon={<BarChart3 className="h-4 w-4" />}
-        defaultExpanded={true}
+        defaultExpanded={false}
       >
         <PoBreakdownCard po={poBreakdown} levelBreakdown={levelBreakdown} />
       </CollapsibleSection>
@@ -515,7 +636,7 @@ export default function Dashboard() {
           title="课程类型分布"
           subtitle="各类别的班级数与 PO"
           icon={<Layers className="h-4 w-4" />}
-          defaultExpanded={true}
+          defaultExpanded={false}
         >
           <ClassTypeDistribution items={classTypeDistribution} />
         </CollapsibleSection>
@@ -524,7 +645,7 @@ export default function Dashboard() {
           title="学员统计"
           subtitle="总学员数及类型占比"
           icon={<Users className="h-4 w-4" />}
-          defaultExpanded={true}
+          defaultExpanded={false}
         >
           <LearnerCountCard stats={learnerStats} />
         </CollapsibleSection>
@@ -734,6 +855,87 @@ function DevMiniStat({ label, value, icon }: { label: string; value: string; ico
         {icon}
       </div>
       <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{value}</p>
+    </div>
+  );
+}
+
+function toneClasses(tone: DashboardActionItem["tone"] | "violet") {
+  const map = {
+    sky: "text-sky-400 bg-sky-500/15 border-sky-400/25",
+    emerald: "text-emerald-400 bg-emerald-500/15 border-emerald-400/25",
+    amber: "text-amber-300 bg-amber-500/15 border-amber-400/25",
+    rose: "text-rose-300 bg-rose-500/15 border-rose-400/25",
+    violet: "text-violet-300 bg-violet-500/15 border-violet-400/25",
+  };
+  return map[tone];
+}
+
+function InsightButton({ item, onClick }: { item: DashboardActionItem; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-[118px] w-full flex-col justify-between rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[color:var(--accent)]/45 hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/35"
+    >
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${toneClasses(item.tone)}`}>
+            {item.badge}
+          </span>
+          <ArrowRight className="h-4 w-4 text-[color:var(--muted)] transition group-hover:translate-x-0.5 group-hover:text-[color:var(--text)]" />
+        </div>
+        <p className="mt-3 line-clamp-2 text-sm font-semibold text-[color:var(--text)]">{item.title}</p>
+      </div>
+      <p className="mt-3 truncate text-xs text-[color:var(--muted)]">{item.meta}</p>
+    </button>
+  );
+}
+
+function OverviewMetric({
+  label,
+  value,
+  suffix,
+  meta,
+  tone,
+}: {
+  label: string;
+  value: number;
+  suffix: string;
+  meta?: string;
+  tone: "sky" | "emerald" | "amber" | "violet";
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-lg shadow-black/10"
+    >
+      <p className="text-sm text-[color:var(--muted)]">{label}</p>
+      <div className="mt-3 flex items-end gap-2">
+        <span className={`text-3xl font-semibold ${toneClasses(tone).split(" ")[0]}`}>
+          {value}
+        </span>
+        <span className="text-sm text-[color:var(--muted)]">{suffix}</span>
+      </div>
+      {meta ? <p className="mt-2 text-xs text-[color:var(--muted)]">{meta}</p> : null}
+    </motion.div>
+  );
+}
+
+function SnapshotMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "sky" | "emerald" | "amber" | "violet";
+}) {
+  return (
+    <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-3">
+      <p className="text-xs text-[color:var(--muted)]">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${toneClasses(tone).split(" ")[0]}`}>{value}</p>
     </div>
   );
 }

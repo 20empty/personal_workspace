@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowDown, ArrowUp, Download, FileSpreadsheet, FolderOpen, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { ArrowDown, ArrowUp, ClipboardList, DatabaseBackup, Download, FileSpreadsheet, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import SchedulePreviewModal from "../components/delivery/SchedulePreviewModal";
 import { useUpdater } from "../components/layout/UpdateProvider";
 import {
@@ -35,13 +37,48 @@ const STAGES = [
   { key: "post", label: "课后" },
 ] as const;
 
+const SETTINGS_TABS = [
+  {
+    key: "sop",
+    label: "SOP 设置",
+    description: "按班级类型维护交付任务模版",
+    icon: ClipboardList,
+  },
+  {
+    key: "courses",
+    label: "课程库管理",
+    description: "管理标准课程与课表附件",
+    icon: FileSpreadsheet,
+  },
+  {
+    key: "data",
+    label: "数据备份",
+    description: "导出或恢复本地数据库",
+    icon: DatabaseBackup,
+  },
+  {
+    key: "updates",
+    label: "应用更新",
+    description: "检查版本和安装更新",
+    icon: RefreshCw,
+  },
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
+
 type PreviewState = {
   course: CourseTemplateRecord;
   previewContent: PreviewContent | null;
   fileType: ScheduleFileType | null;
 };
 
+type RestoreDatabaseResult = {
+  restoredPath: string;
+  previousBackupPath: string;
+};
+
 const SCHEDULE_FILE_FILTER = [{ name: "课表文件", extensions: ["xlsx", "xls", "numbers", "pdf", "png", "jpg", "jpeg", "webp", "gif"] }];
+const DATABASE_BACKUP_FILTER = [{ name: "Classroom 数据库备份", extensions: ["db", "sqlite", "sqlite3"] }];
 
 export default function Settings() {
   const {
@@ -65,6 +102,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [courseActionMessage, setCourseActionMessage] = useState<string>("");
+  const [dataActionMessage, setDataActionMessage] = useState<string>("");
+  const [dataBusy, setDataBusy] = useState<"backup" | "restore" | null>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("sop");
   const [managedScheduleRoot, setManagedScheduleRoot] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
@@ -407,14 +447,113 @@ export default function Settings() {
     }
   };
 
+  const defaultBackupName = () => {
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return `classroom-backup-${stamp}.db`;
+  };
+
+  const handleBackupDatabase = async () => {
+    try {
+      setDataBusy("backup");
+      setDataActionMessage("");
+      const targetPath = await saveFileDialog({
+        title: "导出 Classroom 数据备份",
+        defaultPath: defaultBackupName(),
+        filters: DATABASE_BACKUP_FILTER,
+      });
+      if (!targetPath) return;
+
+      const savedPath = await invoke<string>("backup_database", { targetPath });
+      setDataActionMessage(`数据备份已导出到：${savedPath}`);
+    } catch (error) {
+      console.error("Failed to backup database:", error);
+      setDataActionMessage(`导出备份失败：${String(error)}`);
+    } finally {
+      setDataBusy(null);
+    }
+  };
+
+  const handleRestoreDatabase = async () => {
+    try {
+      setDataBusy("restore");
+      setDataActionMessage("");
+      const sourcePath = await openFileDialog({
+        multiple: false,
+        directory: false,
+        filters: DATABASE_BACKUP_FILTER,
+      });
+      if (!sourcePath || Array.isArray(sourcePath)) return;
+
+      const confirmed = window.confirm(
+        "恢复备份会替换当前本地数据库。应用会先保留一份当前数据库副本，并在恢复后重启。确认继续？"
+      );
+      if (!confirmed) return;
+
+      const result = await invoke<RestoreDatabaseResult>("restore_database", { sourcePath });
+      setDataActionMessage(`数据已恢复。旧数据库副本：${result.previousBackupPath}`);
+      window.alert("数据已恢复，应用将重启以加载备份内容。");
+      await relaunch();
+    } catch (error) {
+      console.error("Failed to restore database:", error);
+      setDataActionMessage(`恢复备份失败：${String(error)}`);
+    } finally {
+      setDataBusy(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">Settings</p>
         <h1 className="mt-2 text-2xl font-semibold text-[color:var(--text)]">设置</h1>
-        <p className="mt-2 text-sm text-[color:var(--muted)]">SOP 模版配置与桌面应用更新</p>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">把交付规则、课程资源、数据安全和版本维护放在同一个控制台里。</p>
       </header>
 
+      <section className="overflow-hidden rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)]">
+        <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-strong)] px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-[color:var(--muted)]">Control Center</p>
+              <h2 className="mt-2 text-xl font-semibold text-[color:var(--text)]">
+                {SETTINGS_TABS.find((tab) => tab.key === activeTab)?.label}
+              </h2>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">
+                {SETTINGS_TABS.find((tab) => tab.key === activeTab)?.description}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[color:var(--border)] px-4 py-3 text-right">
+              <p className="text-xs text-[color:var(--muted)]">当前版本</p>
+              <p className="mt-1 text-lg font-semibold text-[color:var(--text)]">{appVersion}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {SETTINGS_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const selected = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={[
+                    "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition",
+                    selected
+                      ? "border-[color:var(--accent)] bg-[color:var(--accent)] text-white shadow-sm"
+                      : "border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--muted)] hover:text-[color:var(--text)]",
+                  ].join(" ")}
+                  title={tab.description}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {activeTab === "updates" ? (
       <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -535,7 +674,63 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      ) : null}
 
+      {activeTab === "data" ? (
+      <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[color:var(--text)]">数据备份与恢复</h2>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">
+              导出完整本地数据库，用于迁移设备、版本回滚或手动备份。
+            </p>
+          </div>
+          <DatabaseBackup className="h-5 w-5 text-[color:var(--muted)]" />
+        </header>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--text)]">导出备份</p>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
+              保存当前班级、课程库、SOP 模版和开发看板数据。
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleBackupDatabase()}
+              disabled={dataBusy !== null}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--accent)]/90 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {dataBusy === "backup" ? "正在导出..." : "导出数据库"}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--text)]">恢复备份</p>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
+              恢复前会自动保留当前数据库副本，恢复完成后重启应用。
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleRestoreDatabase()}
+              disabled={dataBusy !== null}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm font-semibold text-[color:var(--text)] transition hover:bg-white/[0.04] disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+              {dataBusy === "restore" ? "正在恢复..." : "选择备份恢复"}
+            </button>
+          </div>
+        </div>
+
+        {dataActionMessage ? (
+          <p className="mt-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel-strong)] px-4 py-3 text-sm text-[color:var(--text)]">
+            {dataActionMessage}
+          </p>
+        ) : null}
+      </section>
+      ) : null}
+
+      {activeTab === "sop" ? (
       <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <div className="flex flex-wrap gap-2">
           {(Object.keys(CLASS_TYPE_LABELS) as ClassType[]).map((type) => (
@@ -634,7 +829,9 @@ export default function Settings() {
           </div>
         )}
       </section>
+      ) : null}
 
+      {activeTab === "courses" ? (
       <section className="rounded-3xl border border-[color:var(--border)] bg-[color:var(--panel)] p-6">
         <header className="mb-6">
           <h2 className="text-lg font-semibold text-[color:var(--text)]">课程库管理</h2>
@@ -926,6 +1123,7 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      ) : null}
 
       <SchedulePreviewModal
         open={Boolean(previewState)}

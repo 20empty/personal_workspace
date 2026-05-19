@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -14,6 +15,23 @@ struct ManagedCourseSchedule {
   schedule_preview_path: Option<String>,
   schedule_file_name: String,
   schedule_file_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreDatabaseResult {
+  restored_path: String,
+  previous_backup_path: String,
+}
+
+fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
+  Ok(
+    app
+      .path()
+      .app_local_data_dir()
+      .map_err(|err| format!("获取应用数据目录失败：{err}"))?
+      .join("classroom.db"),
+  )
 }
 
 fn detect_schedule_file_type(path: &Path) -> Result<String, String> {
@@ -75,6 +93,17 @@ fn copy_path(from: &Path, to: &Path) -> Result<(), String> {
     }
     fs::copy(from, to).map_err(|err| format!("复制课表失败：{err}"))?;
     Ok(())
+  }
+}
+
+fn paths_point_to_same_file(left: &Path, right: &Path) -> bool {
+  if !left.exists() || !right.exists() {
+    return false;
+  }
+
+  match (left.canonicalize(), right.canonicalize()) {
+    (Ok(left), Ok(right)) => left == right,
+    _ => false,
   }
 }
 
@@ -211,6 +240,58 @@ fn export_course_schedule(source_path: String, target_path: String) -> Result<()
 }
 
 #[tauri::command]
+fn backup_database(app: AppHandle, target_path: String) -> Result<String, String> {
+  let source = database_path(&app)?;
+  if !source.exists() {
+    return Err("当前数据库文件不存在，无法备份".to_string());
+  }
+
+  let target = PathBuf::from(&target_path);
+  if paths_point_to_same_file(&source, &target) {
+    return Err("备份目标不能是当前正在使用的数据库文件".to_string());
+  }
+
+  copy_path(&source, &target)?;
+  Ok(target.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn restore_database(app: AppHandle, source_path: String) -> Result<RestoreDatabaseResult, String> {
+  let source = PathBuf::from(&source_path);
+  if !source.exists() {
+    return Err("备份文件不存在，请重新选择".to_string());
+  }
+  if source.is_dir() {
+    return Err("请选择数据库备份文件，而不是文件夹".to_string());
+  }
+
+  let target = database_path(&app)?;
+  if paths_point_to_same_file(&source, &target) {
+    return Err("恢复来源不能是当前正在使用的数据库文件".to_string());
+  }
+
+  if let Some(parent) = target.parent() {
+    fs::create_dir_all(parent).map_err(|err| format!("创建数据库目录失败：{err}"))?;
+  }
+
+  let timestamp = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_err(|err| format!("生成恢复备份时间戳失败：{err}"))?
+    .as_secs();
+  let previous_backup = target.with_extension(format!("db.before-restore-{timestamp}"));
+
+  if target.exists() {
+    copy_path(&target, &previous_backup)?;
+  }
+  copy_path(&source, &target)?;
+
+  Ok(RestoreDatabaseResult {
+    restored_path: target.to_string_lossy().to_string(),
+    previous_backup_path: previous_backup.to_string_lossy().to_string(),
+  })
+}
+
+#[tauri::command]
 fn delete_course_schedule(app: AppHandle, course_id: String) -> Result<(), String> {
   let managed_root = app
     .path()
@@ -223,12 +304,20 @@ fn delete_course_schedule(app: AppHandle, course_id: String) -> Result<(), Strin
 }
 
 fn main() {
-  let migrations = vec![Migration {
-    version: 1,
-    description: "create_delivery_classes",
-    sql: include_str!("../migrations/0001_create_delivery_classes.sql"),
-    kind: MigrationKind::Up,
-  }];
+  let migrations = vec![
+    Migration {
+      version: 1,
+      description: "create_delivery_classes",
+      sql: include_str!("../migrations/0001_create_delivery_classes.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 2,
+      description: "create_dev_tables",
+      sql: include_str!("../migrations/0002_create_dev_tables.sql"),
+      kind: MigrationKind::Up,
+    },
+  ];
 
   tauri::Builder::default()
     .setup(|app| {
@@ -244,6 +333,8 @@ fn main() {
       prepare_course_schedule,
       generate_numbers_preview,
       export_course_schedule,
+      backup_database,
+      restore_database,
       delete_course_schedule
     ])
     .plugin(

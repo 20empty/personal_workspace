@@ -12,6 +12,7 @@ const useProfileMock = vi.fn(() => ({
 
 const listDeliveryClassesMock = vi.fn();
 const getCoursesByClassIdMock = vi.fn();
+const getSopTasksByClassIdMock = vi.fn();
 const listCoursesByClassIdsMock = vi.fn();
 const listDevProjectsMock = vi.fn();
 
@@ -25,6 +26,7 @@ vi.mock("@/db/delivery", async () => {
     ...actual,
     listDeliveryClasses: (...args: unknown[]) => listDeliveryClassesMock(...args),
     getCoursesByClassId: (...args: unknown[]) => getCoursesByClassIdMock(...args),
+    getSopTasksByClassId: (...args: unknown[]) => getSopTasksByClassIdMock(...args),
     listCoursesByClassIds: (...args: unknown[]) => listCoursesByClassIdsMock(...args),
   };
 });
@@ -85,6 +87,7 @@ describe("Dashboard", () => {
         updatedAt: "2026-03-20T00:00:00.000Z",
       },
     ]);
+    getSopTasksByClassIdMock.mockResolvedValue([]);
     listCoursesByClassIdsMock.mockResolvedValue([]);
     listDevProjectsMock.mockResolvedValue([]);
   });

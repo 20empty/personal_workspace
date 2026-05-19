@@ -102,6 +102,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
       setDownloading(false);
     }
   };

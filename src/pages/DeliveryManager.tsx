@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Plus,
@@ -55,6 +55,7 @@ export type ViewClass = Pick<
 
 export default function DeliveryManager() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -149,6 +150,20 @@ export default function DeliveryManager() {
       setIsImporting(false);
     }
   };
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean; openImport?: boolean } | null;
+    if (!state) return;
+    if (state.openCreate) {
+      setIsCreateOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+    if (state.openImport) {
+      navigate(location.pathname, { replace: true, state: null });
+      void handleImportClasses();
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const activeClasses = useMemo(
     () => classes.filter((item) => item.stage === "active"),

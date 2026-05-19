@@ -38,7 +38,7 @@ export default function DevTracker() {
           <h1 className="mt-2 text-3xl font-semibold text-[color:var(--text)]">课件开发工作台</h1>
         </div>
         
-        <div className="flex space-x-1 rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] p-1">
+        <div className="flex flex-wrap gap-2">
           <TabButton 
             active={activeTab === "dashboard"} 
             onClick={() => setActiveTab("dashboard")} 
@@ -99,10 +99,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+      className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition-colors ${
         active 
-          ? "bg-[color:var(--background)] text-[color:var(--text)] shadow-sm" 
-          : "text-[color:var(--muted)] hover:bg-[color:var(--background)]/50 hover:text-[color:var(--text)]"
+          ? "border-[color:var(--accent)] bg-[color:var(--accent)] text-white shadow-sm" 
+          : "border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--muted)] hover:bg-white/[0.04] hover:text-[color:var(--text)]"
       }`}
     >
       {icon}

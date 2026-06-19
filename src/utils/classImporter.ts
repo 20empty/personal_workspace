@@ -2,8 +2,7 @@
  * 班级导入工具 - 从 Excel 文件批量导入班级基本信息
  */
 
-import { readFile } from "@tauri-apps/plugin-fs";
-import * as XLSX from "xlsx";
+import { invoke } from "@tauri-apps/api/core";
 import { createDeliveryClass } from "../db/delivery";
 import type { DeliveryClassInput, ClassType } from "../db/delivery";
 
@@ -103,7 +102,14 @@ export interface ImportSummary {
  * 解析 Excel 文件，返回班级数据列表
  */
 export async function parseClassImportExcel(path: string): Promise<ParseResult> {
-  const bytes = await readFile(path);
+  const [XLSX, rawBytes] = await Promise.all([
+    import("xlsx"),
+    invoke<number[]>("read_supported_file", {
+      sourcePath: path,
+      allowedExtensions: ["xlsx", "xls"],
+    }),
+  ]);
+  const bytes = new Uint8Array(rawBytes);
   const workbook = XLSX.read(bytes, { type: "array" });
 
   const firstSheet = workbook.SheetNames[0];

@@ -14,6 +14,7 @@ export const deliveryClasses = sqliteTable("delivery_classes", {
   endDate: text("end_date").notNull(),
   learners: integer("learners").notNull().default(0),
   teacherPo: integer("teacher_po").notNull().default(0),
+  projectSupportPo: integer("project_support_po").notNull().default(0),
   headteacherPo: integer("headteacher_po").notNull().default(0),
   progress: integer("progress").notNull().default(0),
   nextSession: text("next_session").notNull().default("待确认"),
@@ -31,7 +32,9 @@ export const deliveryClasses = sqliteTable("delivery_classes", {
 export const deliveryCourses = sqliteTable("delivery_courses", {
   id: text("id").primaryKey(),
   classId: text("class_id").notNull(),
+  courseTemplateId: text("course_template_id"),
   name: text("name").notNull(),
+  level: text("level").notNull().default("L2"),
   days: text("days").notNull(),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),

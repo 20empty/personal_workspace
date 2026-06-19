@@ -1,10 +1,11 @@
 import { Download, FileSpreadsheet, LayoutList, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { PreviewContent, ScheduleFileType } from "../../utils/previewEngine";
 import { getFileTypeLabel } from "../../utils/previewEngine";
 import ExcelRenderer from "../preview/ExcelRenderer";
-import PdfRenderer from "../preview/PdfRenderer";
 import ImageRenderer from "../preview/ImageRenderer";
+
+const PdfRenderer = lazy(() => import("../preview/PdfRenderer"));
 
 type SchedulePreviewModalProps = {
   open: boolean;
@@ -146,7 +147,15 @@ export default function SchedulePreviewModal({
                 onActiveSheetChange={setActiveSheet}
               />
             ) : previewContent?.type === "pdf" ? (
-              <PdfRenderer url={previewContent.url} fileName={fileName} />
+              <Suspense
+                fallback={
+                  <div className="grid h-full place-items-center rounded-3xl border border-dashed border-[color:var(--border)] text-sm text-[color:var(--muted)]">
+                    正在加载 PDF 预览...
+                  </div>
+                }
+              >
+                <PdfRenderer url={previewContent.url} fileName={fileName} />
+              </Suspense>
             ) : previewContent?.type === "image" ? (
               <ImageRenderer url={previewContent.url} fileName={fileName} />
             ) : (

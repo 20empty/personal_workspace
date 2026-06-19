@@ -285,44 +285,35 @@ function toNumber(value: unknown): number {
 
 /* ───────── Ensure Tables Exist ───────── */
 
-async function ensureTables() {
-  const db = await getDb();
-  // Add class_type column if missing (for existing databases)
-  try {
-    await db.execute(
-      `ALTER TABLE delivery_classes ADD COLUMN class_type TEXT NOT NULL DEFAULT 'centralized'`
-    );
-  } catch {
-    // column already exists – ignore
+type DeliveryDb = Awaited<ReturnType<typeof getDb>>;
+
+async function getTableColumnNames(db: DeliveryDb, table: string): Promise<Set<string>> {
+  const rows = await db.select<Record<string, unknown>[]>(`PRAGMA table_info(${table})`);
+  return new Set(rows.map((row) => row.name as string));
+}
+
+async function addColumnsIfMissing(
+  db: DeliveryDb,
+  table: string,
+  columns: Array<[name: string, definition: string]>
+) {
+  const existing = await getTableColumnNames(db, table);
+  for (const [name, definition] of columns) {
+    if (!existing.has(name)) {
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
   }
-  try {
-    await db.execute(
-      `ALTER TABLE delivery_classes ADD COLUMN teacher_po INTEGER NOT NULL DEFAULT 0`
-    );
-  } catch {
-    // column already exists – ignore
-  }
-  try {
-    await db.execute(
-      `ALTER TABLE delivery_classes ADD COLUMN headteacher_po INTEGER NOT NULL DEFAULT 0`
-    );
-  } catch {
-    // column already exists – ignore
-  }
-  try {
-    await db.execute(
-      `ALTER TABLE delivery_classes ADD COLUMN project_support_po INTEGER NOT NULL DEFAULT 0`
-    );
-  } catch {
-    // column already exists – ignore
-  }
-  try {
-    await db.execute(
-      `ALTER TABLE delivery_classes ADD COLUMN contract_no TEXT NOT NULL DEFAULT ''`
-    );
-  } catch {
-    // column already exists – ignore
-  }
+}
+
+async function ensureLegacyDeliverySchema(db: DeliveryDb) {
+  await addColumnsIfMissing(db, "delivery_classes", [
+    ["class_type", "TEXT NOT NULL DEFAULT 'centralized'"],
+    ["teacher_po", "INTEGER NOT NULL DEFAULT 0"],
+    ["headteacher_po", "INTEGER NOT NULL DEFAULT 0"],
+    ["project_support_po", "INTEGER NOT NULL DEFAULT 0"],
+    ["contract_no", "TEXT NOT NULL DEFAULT ''"],
+  ]);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS delivery_sop_tasks (
       id          TEXT PRIMARY KEY,
@@ -351,17 +342,11 @@ async function ensureTables() {
       FOREIGN KEY (class_id) REFERENCES delivery_classes(id) ON DELETE CASCADE
     )
   `);
-  // Migration for existing tables
-  try {
-    await db.execute(`ALTER TABLE delivery_courses ADD COLUMN level TEXT NOT NULL DEFAULT 'L2'`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_courses ADD COLUMN course_template_id TEXT`);
-  } catch {
-    // Already exists
-  }
+  await addColumnsIfMissing(db, "delivery_courses", [
+    ["level", "TEXT NOT NULL DEFAULT 'L2'"],
+    ["course_template_id", "TEXT"],
+  ]);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS delivery_sop_templates (
       id          TEXT PRIMARY KEY,
@@ -388,26 +373,19 @@ async function ensureTables() {
       updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_path TEXT`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_preview_path TEXT`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_name TEXT`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_type TEXT`);
-  } catch {
-    // Already exists
-  }
+  await addColumnsIfMissing(db, "delivery_course_templates", [
+    ["schedule_path", "TEXT"],
+    ["schedule_preview_path", "TEXT"],
+    ["schedule_file_name", "TEXT"],
+    ["schedule_file_type", "TEXT"],
+  ]);
+
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_delivery_courses_class_id ON delivery_courses(class_id)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_delivery_sop_tasks_class_id ON delivery_sop_tasks(class_id)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_delivery_classes_stage ON delivery_classes(stage)");
+}
+
+async function ensureDefaultSopTemplates(db: DeliveryDb) {
   const classTypes: ClassType[] = ["overseas", "domestic", "centralized", "online"];
   const ensureTemplatesForClassType = async (classType: ClassType) => {
     const existingTemplates = await db.select<Record<string, unknown>[]>(
@@ -439,33 +417,20 @@ async function ensureTables() {
   }
 }
 
+async function ensureTables() {
+  const db = await getDb();
+  await ensureLegacyDeliverySchema(db);
+  await ensureDefaultSopTemplates(db);
+}
+
 let _tablesReady: Promise<void> | null = null;
 function tablesReady() {
   if (!_tablesReady) _tablesReady = ensureTables();
   return _tablesReady;
 }
 
-async function ensureCourseTemplateSchedulePathColumn(db: Awaited<ReturnType<typeof getDb>>) {
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_path TEXT`);
-  } catch {
-    // Already exists or table has just been migrated.
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_preview_path TEXT`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_name TEXT`);
-  } catch {
-    // Already exists
-  }
-  try {
-    await db.execute(`ALTER TABLE delivery_course_templates ADD COLUMN schedule_file_type TEXT`);
-  } catch {
-    // Already exists
-  }
+async function ensureCourseTemplateSchedulePathColumn(_db: DeliveryDb) {
+  // Schema is handled by Tauri migrations plus the legacy compatibility pass in ensureTables().
 }
 
 /* ───────── CRUD: Delivery Classes ───────── */

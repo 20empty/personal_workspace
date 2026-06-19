@@ -1,7 +1,5 @@
 import { appLocalDataDir, extname, join } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
-import { exists, readFile } from "@tauri-apps/plugin-fs";
-import * as XLSX from "xlsx";
 type ScheduleBackedCourse = {
   schedulePath: string | null;
   schedulePreviewPath: string | null;
@@ -22,6 +20,12 @@ export type WorkbookPreview = {
   sheetNames: string[];
   sheets: Record<string, string[][]>;
 };
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 
 export async function getManagedSchedulesRoot(): Promise<string> {
   const localDir = await appLocalDataDir();
@@ -88,11 +92,21 @@ export async function deleteCourseScheduleAssets(courseId: string): Promise<void
 
 export async function canMigrateLegacySchedule(course: ScheduleBackedCourse): Promise<boolean> {
   if (!course.schedulePath) return false;
-  return exists(course.schedulePath);
+  return invoke<boolean>("supported_file_exists", {
+    sourcePath: course.schedulePath,
+    allowedExtensions: ["xlsx", "xls", "numbers", "pdf", "png", "jpg", "jpeg", "webp", "gif"],
+  });
 }
 
 export async function loadWorkbookPreview(path: string): Promise<WorkbookPreview> {
-  const bytes = await readFile(path);
+  const [XLSX, rawBytes] = await Promise.all([
+    import("xlsx"),
+    invoke<number[]>("read_supported_file", {
+      sourcePath: path,
+      allowedExtensions: ["xlsx", "xls"],
+    }),
+  ]);
+  const bytes = new Uint8Array(rawBytes);
   const workbook = XLSX.read(bytes, { type: "array" });
   const sheets: Record<string, string[][]> = {};
 
@@ -111,8 +125,12 @@ export async function loadWorkbookPreview(path: string): Promise<WorkbookPreview
 }
 
 export async function loadPdfBlobUrl(path: string): Promise<string> {
-  const bytes = await readFile(path);
-  const pdfBlob = new Blob([bytes], { type: "application/pdf" });
+  const rawBytes = await invoke<number[]>("read_supported_file", {
+    sourcePath: path,
+    allowedExtensions: ["pdf"],
+  });
+  const bytes = new Uint8Array(rawBytes);
+  const pdfBlob = new Blob([toArrayBuffer(bytes)], { type: "application/pdf" });
   return URL.createObjectURL(pdfBlob);
 }
 

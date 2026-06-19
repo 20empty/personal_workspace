@@ -1,6 +1,5 @@
-import { readFile } from "@tauri-apps/plugin-fs";
-import ExcelJS from "exceljs";
-import * as XLSX from "xlsx";
+import { invoke } from "@tauri-apps/api/core";
+import type ExcelJS from "exceljs";
 
 // 图片格式类型
 export type ImageFileType = "png" | "jpg" | "jpeg" | "webp" | "gif";
@@ -50,6 +49,23 @@ export type PreviewContent =
   | { type: "pdf"; url: string; cleanup?: () => void }
   | { type: "image"; url: string; cleanup?: () => void }
   | { type: "error"; message: string };
+
+async function readSupportedFile(
+  path: string,
+  allowedExtensions: readonly ScheduleFileType[]
+): Promise<Uint8Array> {
+  const bytes = await invoke<number[]>("read_supported_file", {
+    sourcePath: path,
+    allowedExtensions: [...allowedExtensions],
+  });
+  return new Uint8Array(bytes);
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 
 // 从 exceljs 样式转换为我们自己的格式
 function convertExcelStyle(cell: ExcelJS.Cell): CellStyle | undefined {
@@ -143,10 +159,14 @@ function convertExcelStyle(cell: ExcelJS.Cell): CellStyle | undefined {
 
 // 使用 exceljs 读取带样式的 Excel
 async function loadExcelWorkbookWithStyles(path: string): Promise<ExcelWorkbook> {
-  const bytes = await readFile(path);
-  const workbook = new ExcelJS.Workbook();
+  const [ExcelJSModule, bytes] = await Promise.all([
+    import("exceljs"),
+    readSupportedFile(path, ["xlsx", "xls"]),
+  ]);
+  const ExcelJSRuntime = ExcelJSModule.default;
+  const workbook = new ExcelJSRuntime.Workbook();
   // exceljs 可以直接加载 ArrayBuffer
-  await workbook.xlsx.load(bytes.buffer);
+  await workbook.xlsx.load(toArrayBuffer(bytes));
 
   const sheets: Record<string, ExcelSheet> = {};
 
@@ -215,7 +235,10 @@ async function loadExcelWorkbookWithStyles(path: string): Promise<ExcelWorkbook>
 
 // 使用 xlsx 读取纯数据 Excel（回退方案）
 async function loadExcelWorkbookBasic(path: string): Promise<ExcelWorkbook> {
-  const bytes = await readFile(path);
+  const [XLSX, bytes] = await Promise.all([
+    import("xlsx"),
+    readSupportedFile(path, ["xlsx", "xls"]),
+  ]);
   const workbook = XLSX.read(bytes, { type: "array" });
   const sheets: Record<string, ExcelSheet> = {};
 
@@ -242,8 +265,8 @@ async function loadExcelWorkbookBasic(path: string): Promise<ExcelWorkbook> {
 
 // 加载 PDF Blob URL
 async function loadPdfBlobUrl(path: string): Promise<{ url: string; cleanup: () => void }> {
-  const bytes = await readFile(path);
-  const pdfBlob = new Blob([bytes], { type: "application/pdf" });
+  const bytes = await readSupportedFile(path, ["pdf"]);
+  const pdfBlob = new Blob([toArrayBuffer(bytes)], { type: "application/pdf" });
   const url = URL.createObjectURL(pdfBlob);
   return {
     url,
@@ -253,7 +276,7 @@ async function loadPdfBlobUrl(path: string): Promise<{ url: string; cleanup: () 
 
 // 加载图片 Blob URL
 async function loadImageBlobUrl(path: string): Promise<{ url: string; cleanup: () => void }> {
-  const bytes = await readFile(path);
+  const bytes = await readSupportedFile(path, ["png", "jpg", "jpeg", "webp", "gif"]);
   const ext = path.toLowerCase().split(".").pop() || "png";
   let mimeType = "image/png";
 
@@ -265,7 +288,7 @@ async function loadImageBlobUrl(path: string): Promise<{ url: string; cleanup: (
     mimeType = "image/gif";
   }
 
-  const blob = new Blob([bytes], { type: mimeType });
+  const blob = new Blob([toArrayBuffer(bytes)], { type: mimeType });
   const url = URL.createObjectURL(blob);
   return {
     url,

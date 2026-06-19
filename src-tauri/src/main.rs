@@ -47,6 +47,99 @@ fn detect_schedule_file_type(path: &Path) -> Result<String, String> {
   }
 }
 
+fn validate_course_id(course_id: &str) -> Result<(), String> {
+  if course_id.is_empty()
+    || course_id.contains('/')
+    || course_id.contains('\\')
+    || course_id.contains("..")
+  {
+    return Err("课表资源 ID 不合法".to_string());
+  }
+  Ok(())
+}
+
+fn course_schedule_root(app: &AppHandle, course_id: &str) -> Result<PathBuf, String> {
+  validate_course_id(course_id)?;
+  Ok(
+    app
+      .path()
+      .app_local_data_dir()
+      .map_err(|err| format!("获取应用数据目录失败：{err}"))?
+      .join("course-schedules")
+      .join(course_id),
+  )
+}
+
+const SUPPORTED_READ_EXTENSIONS: &[&str] = &[
+  "xlsx", "xls", "numbers", "pdf", "png", "jpg", "jpeg", "webp", "gif",
+];
+
+fn path_extension(path: &Path) -> Result<String, String> {
+  path
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .map(|ext| ext.to_lowercase())
+    .ok_or_else(|| "无法识别文件类型".to_string())
+}
+
+fn normalize_allowed_extensions(allowed_extensions: Vec<String>) -> Result<Vec<String>, String> {
+  if allowed_extensions.is_empty() {
+    return Err("缺少允许读取的文件类型".to_string());
+  }
+
+  let mut normalized = Vec::with_capacity(allowed_extensions.len());
+  for extension in allowed_extensions {
+    let extension = extension.trim_start_matches('.').to_lowercase();
+    if !SUPPORTED_READ_EXTENSIONS.contains(&extension.as_str()) {
+      return Err("包含不支持的文件类型".to_string());
+    }
+    normalized.push(extension);
+  }
+  Ok(normalized)
+}
+
+fn ensure_supported_read_extension(
+  path: &Path,
+  allowed_extensions: Vec<String>,
+) -> Result<String, String> {
+  let extension = path_extension(path)?;
+  let allowed = normalize_allowed_extensions(allowed_extensions)?;
+  if !allowed.iter().any(|item| item == &extension) {
+    return Err("文件类型不在允许范围内".to_string());
+  }
+  Ok(extension)
+}
+
+#[tauri::command]
+fn read_supported_file(
+  source_path: String,
+  allowed_extensions: Vec<String>,
+) -> Result<Vec<u8>, String> {
+  let source = PathBuf::from(&source_path);
+  ensure_supported_read_extension(&source, allowed_extensions)?;
+
+  if !source.exists() {
+    return Err("文件不存在，请重新选择".to_string());
+  }
+  if source.is_dir() {
+    return Err("请选择文件，而不是文件夹".to_string());
+  }
+
+  fs::read(source).map_err(|err| format!("读取文件失败：{err}"))
+}
+
+#[tauri::command]
+fn supported_file_exists(
+  source_path: String,
+  allowed_extensions: Vec<String>,
+) -> Result<bool, String> {
+  let source = PathBuf::from(&source_path);
+  if ensure_supported_read_extension(&source, allowed_extensions).is_err() {
+    return Ok(false);
+  }
+  Ok(source.exists())
+}
+
 fn remove_path_if_exists(path: &Path) -> Result<(), String> {
   if !path.exists() {
     return Ok(());
@@ -167,6 +260,7 @@ fn prepare_course_schedule(
   source_path: String,
   generate_preview: Option<bool>,
 ) -> Result<ManagedCourseSchedule, String> {
+  validate_course_id(&course_id)?;
   let source = PathBuf::from(&source_path);
   if !source.exists() {
     return Err("课表源文件不存在，请重新上传".to_string());
@@ -179,12 +273,7 @@ fn prepare_course_schedule(
     .map(|value| value.to_string())
     .ok_or_else(|| "无法读取课表文件名".to_string())?;
 
-  let managed_root = app
-    .path()
-    .app_local_data_dir()
-    .map_err(|err| format!("获取应用数据目录失败：{err}"))?
-    .join("course-schedules")
-    .join(&course_id);
+  let managed_root = course_schedule_root(&app, &course_id)?;
 
   remove_path_if_exists(&managed_root)?;
   fs::create_dir_all(&managed_root).map_err(|err| format!("创建课表目录失败：{err}"))?;
@@ -211,12 +300,7 @@ fn prepare_course_schedule(
 
 #[tauri::command]
 fn generate_numbers_preview(app: AppHandle, course_id: String) -> Result<String, String> {
-  let managed_root = app
-    .path()
-    .app_local_data_dir()
-    .map_err(|err| format!("获取应用数据目录失败：{err}"))?
-    .join("course-schedules")
-    .join(&course_id);
+  let managed_root = course_schedule_root(&app, &course_id)?;
 
   let source_path = managed_root.join("source.numbers");
   if !source_path.exists() {
@@ -293,12 +377,7 @@ fn restore_database(app: AppHandle, source_path: String) -> Result<RestoreDataba
 
 #[tauri::command]
 fn delete_course_schedule(app: AppHandle, course_id: String) -> Result<(), String> {
-  let managed_root = app
-    .path()
-    .app_local_data_dir()
-    .map_err(|err| format!("获取应用数据目录失败：{err}"))?
-    .join("course-schedules")
-    .join(course_id);
+  let managed_root = course_schedule_root(&app, &course_id)?;
 
   remove_path_if_exists(&managed_root)
 }
@@ -315,6 +394,12 @@ fn main() {
       version: 2,
       description: "create_dev_tables",
       sql: include_str!("../migrations/0002_create_dev_tables.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 3,
+      description: "consolidate_schema",
+      sql: include_str!("../migrations/0003_consolidate_schema.sql"),
       kind: MigrationKind::Up,
     },
   ];
@@ -335,7 +420,9 @@ fn main() {
       export_course_schedule,
       backup_database,
       restore_database,
-      delete_course_schedule
+      delete_course_schedule,
+      read_supported_file,
+      supported_file_exists
     ])
     .plugin(
       tauri_plugin_sql::Builder::default()

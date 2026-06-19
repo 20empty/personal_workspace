@@ -1,5 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ExcelWorkbook, ExcelCell } from "../../utils/previewEngine";
+
+const DEFAULT_INITIAL_ROW_LIMIT = 300;
+const DEFAULT_ROW_INCREMENT = 300;
+const DEFAULT_MAX_COLUMN_LIMIT = 80;
 
 // 将 ARGB 颜色转换为 CSS 颜色
 function resolveColor(color: string | undefined): string {
@@ -61,10 +65,21 @@ interface ExcelRendererProps {
   workbook: ExcelWorkbook;
   activeSheet?: string;
   onActiveSheetChange?: (sheet: string) => void;
+  initialRowLimit?: number;
+  rowIncrement?: number;
+  maxColumnLimit?: number;
 }
 
-export default function ExcelRenderer({ workbook, activeSheet: externalActiveSheet, onActiveSheetChange }: ExcelRendererProps) {
+export default function ExcelRenderer({
+  workbook,
+  activeSheet: externalActiveSheet,
+  onActiveSheetChange,
+  initialRowLimit = DEFAULT_INITIAL_ROW_LIMIT,
+  rowIncrement = DEFAULT_ROW_INCREMENT,
+  maxColumnLimit = DEFAULT_MAX_COLUMN_LIMIT,
+}: ExcelRendererProps) {
   const [internalActiveSheet, setInternalActiveSheet] = useState<string>("");
+  const [visibleRowCount, setVisibleRowCount] = useState(initialRowLimit);
   const isExternal = externalActiveSheet !== undefined;
   const activeSheet = isExternal ? externalActiveSheet : internalActiveSheet;
   const setActiveSheet = isExternal ? (onActiveSheetChange ?? (() => {})) : setInternalActiveSheet;
@@ -78,13 +93,24 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
   const currentSheet = resolvedSheet ? workbook.sheets[resolvedSheet] : null;
   const rows = currentSheet?.rows ?? [];
   const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const visibleRows = useMemo(
+    () => rows.slice(0, Math.min(visibleRowCount, rows.length)),
+    [rows, visibleRowCount]
+  );
+  const visibleColumnCount = Math.min(Math.max(maxColumns, 1), maxColumnLimit);
+  const hiddenRowCount = Math.max(rows.length - visibleRows.length, 0);
+  const hiddenColumnCount = Math.max(maxColumns - visibleColumnCount, 0);
+
+  useEffect(() => {
+    setVisibleRowCount(initialRowLimit);
+  }, [initialRowLimit, resolvedSheet, workbook]);
 
   // 使用 useMemo 缓存所有单元格的样式，避免每次渲染重新计算
   const cellStyles = useMemo(() => {
-    return rows.map((row) =>
+    return visibleRows.map((row) =>
       row.map((cell) => (cell ? getCellStyle(cell) : {}))
     );
-  }, [rows]);
+  }, [visibleRows]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-[color:var(--border)]">
@@ -99,7 +125,7 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
           </p>
         </div>
         <div className="text-xs text-[color:var(--muted)]">
-          共 {rows.length} 行，最多 {maxColumns} 列
+          显示 {visibleRows.length}/{rows.length} 行，{visibleColumnCount}/{Math.max(maxColumns, 1)} 列
         </div>
       </div>
 
@@ -133,7 +159,7 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
         ) : (
           <table className="min-w-full border-collapse text-left text-sm">
             <tbody className="divide-y divide-[color:var(--border)]">
-              {rows.map((row, rowIndex) => (
+              {visibleRows.map((row, rowIndex) => (
                 <tr
                   key={`row-${rowIndex}`}
                   className="align-top"
@@ -143,7 +169,7 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
                       : undefined,
                   }}
                 >
-                  {Array.from({ length: Math.max(maxColumns, 1) }).map((_, columnIndex) => {
+                  {Array.from({ length: visibleColumnCount }).map((_, columnIndex) => {
                     const cell = row[columnIndex];
                     const cellStyle = cellStyles[rowIndex]?.[columnIndex] ?? {};
                     const isFirstRow = rowIndex === 0;
@@ -170,6 +196,23 @@ export default function ExcelRenderer({ workbook, activeSheet: externalActiveShe
               ))}
             </tbody>
           </table>
+        )}
+        {(hiddenRowCount > 0 || hiddenColumnCount > 0) && (
+          <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-5 py-3 text-xs text-[color:var(--muted)]">
+            <span>
+              {hiddenRowCount > 0 ? `还有 ${hiddenRowCount} 行未显示` : "所有行已显示"}
+              {hiddenColumnCount > 0 ? `，已限制展示前 ${visibleColumnCount} 列` : ""}
+            </span>
+            {hiddenRowCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setVisibleRowCount((count) => Math.min(count + rowIncrement, rows.length))}
+                className="rounded-xl border border-[color:var(--border)] px-3 py-1.5 font-medium text-[color:var(--text)] transition hover:bg-white/[0.04]"
+              >
+                加载更多
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -317,8 +317,27 @@ const mapTaskRow = (row: Record<string, unknown>): DevTaskRecord => ({
   updatedAt: row.updated_at as string,
 });
 
-async function ensureTables() {
-  const db = await getDb();
+type DevDb = Awaited<ReturnType<typeof getDb>>;
+
+async function getTableColumnNames(db: DevDb, table: string): Promise<Set<string>> {
+  const rows = await db.select<Record<string, unknown>[]>(`PRAGMA table_info(${table})`);
+  return new Set(rows.map((row) => row.name as string));
+}
+
+async function addColumnsIfMissing(
+  db: DevDb,
+  table: string,
+  columns: Array<[name: string, definition: string]>
+) {
+  const existing = await getTableColumnNames(db, table);
+  for (const [name, definition] of columns) {
+    if (!existing.has(name)) {
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  }
+}
+
+async function ensureLegacyDevSchema(db: DevDb) {
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS dev_projects (
@@ -370,19 +389,12 @@ async function ensureTables() {
     )
   `);
 
-  const projectColumns: [string, string][] = [
+  await addColumnsIfMissing(db, "dev_projects", [
     ["source", "TEXT NOT NULL DEFAULT ''"],
     ["po_count", "INTEGER NOT NULL DEFAULT 0"],
-  ];
-  for (const [col, def] of projectColumns) {
-    try {
-      await db.execute(`ALTER TABLE dev_projects ADD COLUMN ${col} ${def}`);
-    } catch {
-      // ignore existing column
-    }
-  }
+  ]);
 
-  const taskColumns: [string, string][] = [
+  await addColumnsIfMissing(db, "dev_tasks", [
     ["deliverable_type", "TEXT NOT NULL DEFAULT 'slides'"],
     ["assignee", "TEXT NOT NULL DEFAULT ''"],
     ["blocker", "TEXT NOT NULL DEFAULT ''"],
@@ -398,15 +410,7 @@ async function ensureTables() {
     ["draft_completed_at", "TEXT NOT NULL DEFAULT ''"],
     ["qa_completed_at", "TEXT NOT NULL DEFAULT ''"],
     ["submitted_at", "TEXT NOT NULL DEFAULT ''"],
-  ];
-
-  for (const [col, def] of taskColumns) {
-    try {
-      await db.execute(`ALTER TABLE dev_tasks ADD COLUMN ${col} ${def}`);
-    } catch {
-      // ignore existing column
-    }
-  }
+  ]);
 
   await db.execute(`
     UPDATE dev_tasks
@@ -430,6 +434,11 @@ async function ensureTables() {
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_dev_projects_status ON dev_projects(status)
   `);
+}
+
+async function ensureTables() {
+  const db = await getDb();
+  await ensureLegacyDevSchema(db);
 }
 
 let _tablesReady: Promise<void> | null = null;
